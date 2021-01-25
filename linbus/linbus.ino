@@ -121,7 +121,7 @@ struct Config {
   // payload might be empty if payload_size is 0
   //   header::8, rib_id::8, hash::16 identifier::8, payload_size::16, payload::payload_size*bytes
 
-  #define HEADER 0x03
+  #define HEADER 0x04
 
   #define HOST_PORT (1<<0)      //1
   #define CLIENT_PORT (1<<1)    //2
