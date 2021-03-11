@@ -1,3 +1,8 @@
+
+**For esp32 go to [esp32](https://github.com/beamylabs/signalbroker-lin-transceiver/tree/esp32) branch**
+
+**For updates on arduino micro pcb go to [arduino_micro_pcb](https://github.com/beamylabs/signalbroker-lin-transceiver/tree/arduino_micro_pcb) branch**
+
 # Lin bus reader and writer
 
 Ardunio Ethernet (alt. arduino micro + ethernet shield) + MCP2004A. Read/write, act as a master or one or many slaves.

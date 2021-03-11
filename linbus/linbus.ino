@@ -63,8 +63,8 @@
 #define SAVE_MEM   //The ENC28J60 lacks a TCP/IP-stack! This needs to run on the Arduino and eats a lot of memory. Beware!
 
 #elif defined NIC_W5500
-#include <Ethernet2.h>
-#include <EthernetUdp2.h>         // UDP library from: bjoern@cs.stanford.edu 12/30/2008
+#include <Ethernet.h>
+#include <EthernetUdp.h>         // UDP library from: bjoern@cs.stanford.edu 12/30/2008
 
 #elif defined NIC_W5100
 #include <Ethernet.h>
@@ -113,6 +113,7 @@ union DoubleByte
 
 struct Config {
   #define CONFIG_PORT 4000
+  #define CONFIG_PORT_RECEIVE 4001
   #define DEBUG_PORT_BASE 3000
   #define HEARTBEAT_PERIOD 3000 //ms
 
@@ -120,7 +121,7 @@ struct Config {
   // payload might be empty if payload_size is 0
   //   header::8, rib_id::8, hash::16 identifier::8, payload_size::16, payload::payload_size*bytes
 
-  #define HEADER 0x03
+  #define HEADER 0x04
 
   #define HOST_PORT (1<<0)      //1
   #define CLIENT_PORT (1<<1)    //2
@@ -151,7 +152,8 @@ struct Config {
   #define PAYLOAD_START_OFFSET 7
 
   void Init() {
-    ribID = getRibID();
+//    ribID = getRibID();
+    ribID = 1;
     mac[5] = ribID;
 
     lastHash.u16 = 0xFFFF;
@@ -212,6 +214,7 @@ byte packetBuffer[UDP_TX_PACKET_MAX_SIZE_CUSTOM];  //buffer to hold incoming pac
 // An EthernetUDP instance to let us send and receive packets over UDP
 EthernetUDP Udp;
 EthernetUDP UdpConfig;
+EthernetUDP UdpConfigReceive;
 
 // byte b, i, n, b2;
 // LinFrame frame;
@@ -252,6 +255,7 @@ void setup() {
   pinMode(BLUE_PIN, OUTPUT);
 
   UdpConfig.begin(CONFIG_PORT);
+  UdpConfigReceive.begin(CONFIG_PORT_RECEIVE);
 
   debugPrintln("LIN Debugging begins");
   lin.begin(19200);
@@ -372,9 +376,8 @@ void sendOverUdp(byte id, byte* payload, byte size) {
   byte* payloadLocal = &toServerPayload[5];
   toServerPayload[3] = id;
   toServerPayload[4] = size;
-  // or rotate the bytes (if needed)
   for (int i = 0; i < size; i++) {
-    payloadLocal[i] = payload[size-1-i];
+    payloadLocal[i] = payload[i];
   }
   if (!Udp.beginPacket(ipserver, config.hostPort)) {
     debugPrintln("!!! Failed to open UDP socket: %d, %d, %d, %d: %d for send", ipserver[0], ipserver[1], ipserver[2], ipserver[3], config.hostPort);
@@ -398,7 +401,7 @@ void sendOverSerial(Record* record) {
   sendbuffer[0] = lin.addrParity(id) | id;
   byte* sendbuffer_payload = &sendbuffer[1];
   for (int i = 0; i < record->size; i++) {
-    sendbuffer_payload[i] = record->write_cache[record->size-1-i];
+    sendbuffer_payload[i] = record->write_cache[i];
   }
   byte* crc = &sendbuffer[1+record->size];
   if ((id == 60) || (id == 61)) {
@@ -608,10 +611,10 @@ void Config::request_config_item(byte item) {
 
 void Config::parse_server_message() {
 
-  int packetSize = UdpConfig.parsePacket();
+  int packetSize = UdpConfigReceive.parsePacket();
   if (0 == packetSize) return;
 
-  UdpConfig.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE_CUSTOM);
+  UdpConfigReceive.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE_CUSTOM);
 
   if (HEADER != packetBuffer[HEADER_OFFSET]) {
     debugPrintln("Wrong header: %x, should be %x", packetBuffer[HEADER_OFFSET], HEADER);
@@ -624,7 +627,7 @@ void Config::parse_server_message() {
 
   //If we are in broadcast mode we can switch to unicast since we now know that the sender is the server.
   if (255 == ipserver[0]) {
-    ipserver = UdpConfig.remoteIP();
+    ipserver = UdpConfigReceive.remoteIP();
   }
 
   lastHash.u8.high = packetBuffer[HASH_HIGH_OFFSET];
