@@ -8,7 +8,9 @@
  * @param records A storage of records, so you can add records that's received from config
  */
 Config::Config(uint8_t ribID, Records &records)
-    : m_ribID(ribID),
+    : m_nad{},
+      m_nadHash{},
+      m_ribID(ribID),
       m_hostPort{},
       m_hostPortHash{},
       m_clientPort{},
@@ -157,7 +159,11 @@ void Config::verifyConfig()
             goodConfig = false;
             requestConfigItem(MESSAGE_SIZES);
         }
-
+        else if (m_nadHash.u16 != m_lastHash.u16)
+        {
+            goodConfig = false;
+            requestConfigItem(NAD);
+        }
         if (!goodConfig)
         {
             // Wait a little time in between
@@ -298,6 +304,14 @@ void Config::parseServerMessage()
         }
         m_nodeMode = static_cast<NodeModes>(m_packetBuffer.at(value(Offsets::PAYLOAD_START_OFFSET)));
         m_nodeModeHash = m_lastHash;
+        break;
+    case NAD:
+        if (1 != message_size)
+        {
+            return;
+        }
+        m_nad = static_cast<uint8_t>(m_packetBuffer.at(value(Offsets::PAYLOAD_START_OFFSET)));
+        m_nadHash = m_lastHash;
         break;
     default:
         break;
