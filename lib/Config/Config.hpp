@@ -120,7 +120,7 @@ private:
     static constexpr uint8_t MESSAGE_SIZES = (1u << 2u); // 4
     static constexpr uint8_t NODE_MODE = (1u << 3u);     // 8
     static constexpr uint8_t HEART_BEAT = (1u << 4u);    // 16
-    static constexpr uint8_t NAD = (1u << 5u);           // 64
+    static constexpr uint8_t NAD = (1u << 5u);           // 32
     static constexpr uint8_t LOGGER = 0x60;              // 96
 
     uint8_t m_nad = 0;          // This is intended for filtering diagnostic request. To selectively only answer with on lin client.
