@@ -84,6 +84,8 @@ uint8_t LinUdpGateway::synchHeader() {
         //    Serial.printf("FrameBreak: %d, FrameSynch: %d, FrameId: %d\n",
         //    frameBreak, frameSynch, frameId);
 
+        synchTries++;
+     
         if (bytesReceived != bytesExpected) {
             std::array<char, 100> message{};
             sprintf(message.data(),
@@ -91,10 +93,14 @@ uint8_t LinUdpGateway::synchHeader() {
                     "synchTries: %d",
                     bytesExpected, bytesReceived, synchTries);
             m_config->log(message.data());
+
+            // don't get stuck here, return frame_id with failing partiy, 
+            // continue looping.
+            frameId = BAD_ID_BYTE;
+            break;
         }
 
         match = (frameBreak == BREAK) && (frameSynch == SYN_FIELD);
-        synchTries++;
     }
 
     m_config->incrementSynchedPackages();

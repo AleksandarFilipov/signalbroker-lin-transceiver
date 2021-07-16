@@ -57,6 +57,7 @@ private:
 
     static constexpr uint8_t BREAK = 0x00;
     static constexpr uint8_t SYN_FIELD = 0x55;
+    static constexpr uint8_t BAD_ID_BYTE = 0x00;
 
     // this is used by the master to send lin BREAK
     // on lin 14, 3 is fine. 2 results in some timeout
