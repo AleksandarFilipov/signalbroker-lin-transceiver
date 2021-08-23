@@ -87,6 +87,8 @@ public:
 public:
     NodeModes nodeMode() const { return m_nodeMode; }
 
+    uint8_t nad() const { return m_nad; }
+
     uint8_t ribID() const { return m_ribID; }
 
     uint16_t hostPort() const { return m_hostPort; }
@@ -118,7 +120,11 @@ private:
     static constexpr uint8_t MESSAGE_SIZES = (1u << 2u); // 4
     static constexpr uint8_t NODE_MODE = (1u << 3u);     // 8
     static constexpr uint8_t HEART_BEAT = (1u << 4u);    // 16
+    static constexpr uint8_t NAD = (1u << 5u);           // 32
     static constexpr uint8_t LOGGER = 0x60;              // 96
+
+    uint8_t m_nad = 0;          // This is intended for filtering diagnostic request. To selectively only answer with on lin client.
+    DoubleByte m_nadHash;
 
     uint8_t m_ribID;            // This is calculated locally and part of the message header
     AsyncUDP udpClientSender;   // Udp-client that sends data to signal broker

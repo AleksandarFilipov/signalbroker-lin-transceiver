@@ -150,7 +150,7 @@ void LinUdpGateway::readLinAndSendOnUdp(uint8_t id) {
     // In case the the frame is a diagnostic frame, calculate the crc without id
     // (old LIN 1.0 way)
     if ((id == value(DiagnosticFrameId::MasterRequest)) ||
-        (id == value(DiagnosticFrameId::SlaveRequest))) {
+        (id == value(DiagnosticFrameId::SlaveResponse))) {
         // calculate checksum in traditional way for diagnostic frames.
         crc_valid = Lin::validateChecksum(&readBuffer.at(1), bytesExpected);
     } else {
@@ -161,6 +161,11 @@ void LinUdpGateway::readLinAndSendOnUdp(uint8_t id) {
     // If the calculated crc is the same as the one received on the lin-bus,
     // then let's send it to the server
     if (crc_valid) {
+        // if this is a master request, make sure to store nad so the client 
+        // correct client can response, once we have a SlaveResponse
+        if (id == value(DiagnosticFrameId::MasterRequest)) {
+            m_last_seen_nad = readBuffer.at(1); 
+        }
         sendOverUdp(id, &readBuffer.at(1), record->size());
     }
 
@@ -234,7 +239,7 @@ void LinUdpGateway::sendOverSerial(Record *record) {
 
     // Calculate crc and add it to sendBuffer
     if ((id == value(DiagnosticFrameId::MasterRequest)) ||
-        (id == value(DiagnosticFrameId::SlaveRequest))) {
+        (id == value(DiagnosticFrameId::SlaveResponse))) {
         // calculate checksum in traditional way for diagnostic frames.
         crc[0] =
             (uint8_t)Lin::calculateChecksum(&sendBuffer.at(1), record->size());
@@ -365,7 +370,26 @@ void LinUdpGateway::runMaster() {
     }
 }
 
-/**
+boolean LinUdpGateway::is_request_intened_for_this_slave(int id)
+{
+    if (id == value(DiagnosticFrameId::SlaveResponse)) {
+        // diag query check if it's inteneded for me
+        if ((m_config->nad() == m_last_seen_nad) || (m_config->nad() == 0)) {
+            // yes, also accept unconfigured as in 0.
+            return true;
+        } else {
+            // no; somebody with matchin nad should reply.
+            return false;
+        }
+    } else {
+        // not diag related, fine fot this client to act. (respond)
+        return true;
+    }
+}
+
+
+
+    /**
  * @brief Running node as a slave
  * */
 void LinUdpGateway::runSlave() {
@@ -386,10 +410,13 @@ void LinUdpGateway::runSlave() {
                 return;
             }
 
-            if (record->master() || (!record->cacheValid())) {
+            if (record->master() || (!record->cacheValid()) || !is_request_intened_for_this_slave(id))
+            {
                 sendOverUdp(id);
                 readLinAndSendOnUdp(id);
-            } else {
+            }
+            else
+            {
                 // signal-server should response with the expected payload
                 if (record->cacheValid()) {
                     sendOverSerial(record);

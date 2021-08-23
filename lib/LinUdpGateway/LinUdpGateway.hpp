@@ -13,7 +13,7 @@ class Record;
 class LinUdpGateway {
     enum class DiagnosticFrameId : uint8_t {
         MasterRequest = 60,
-        SlaveRequest = 61
+        SlaveResponse = 61
     };
 
 public:
@@ -46,11 +46,13 @@ private:
     void runSlave();
 
 private:
+    boolean is_request_intened_for_this_slave(int id);
     AsyncUDP m_udpClient;
     AsyncUDP m_udpListen;
     Lin m_lin;
     Config *m_config;
     Records *m_records;
+    int m_last_seen_nad;
 
     std::array<uint8_t, UDP_TX_PACKET_MAX_SIZE_CUSTOM> _packetBuffer{};
     int m_packetBufferLength{};
