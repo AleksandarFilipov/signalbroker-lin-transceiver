@@ -64,3 +64,14 @@ When you have uploaded the firmware to your ESP32-devices and assinged them with
       "schedule_autostart": false
 }
 ```
+
+### Debug
+
+Logging is by default output to serial 
+```
+constexpr bool LOG_TO_SERIAL = true;
+```
+To output logs in signalbroker do
+```
+constexpr bool LOG_TO_SERIAL = false;
+```
