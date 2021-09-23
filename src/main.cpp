@@ -32,7 +32,7 @@
 #include "EthernetClient.hpp"
 #include "LinUdpGateway.hpp"
 
-constexpr uint8_t rib_id = 7;
+constexpr uint8_t rib_id = 4;
 
 EthernetClient ethClient{};
 Records records{};
@@ -43,7 +43,10 @@ void setup()
 {
     Serial.begin(115200);
     Serial1.begin(19200);
-    ethClient.connect(&config);
+    // ethClient.connect(&config);
+    ethClient.connect(&config, true, IPAddress(192, 168, 6, 4), IPAddress(192, 168, 6, 100), IPAddress(255, 255, 255, 0));
+    // ethClient.connect(&config, true, IPAddress(192, 168, 4, 2), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
+    // ethClient.connect(&config, true, IPAddress(192, 168, 4, 2), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
 
     // Init configuration
     config.init();
