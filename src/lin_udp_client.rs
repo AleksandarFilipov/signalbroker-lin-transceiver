@@ -1,9 +1,10 @@
 use std::{sync::Arc, time::Duration};
+use std::io::Write;
+use serialport::SerialPort;
 
 use tokio::{net::UdpSocket, sync::Mutex};
 
 use crate::config::Config;
-use crate::record::Record;
 use crate::records::Records;
 
 pub struct LinUdpClient {
@@ -13,7 +14,7 @@ pub struct LinUdpClient {
     udp_client_listener: Arc<Mutex<Option<UdpSocket>>>,
     data: Arc<Mutex<Vec<u8>>>,
     new_data: Arc<Mutex<bool>>,
-
+    serial: Arc<Mutex<Box<dyn SerialPort>>>,
 }
 
 #[repr(u8)]
@@ -32,6 +33,7 @@ impl LinUdpClient {
             udp_client_listener: Arc::new(Mutex::new(None)),
             data: Arc::new(Mutex::new(Vec::default())),
             new_data: Arc::new(Mutex::new(false)),
+            serial: Arc::new(Mutex::new(serialport::new("/dev/serial0", 19_200).open().unwrap())),
         }
     }
 
@@ -56,21 +58,20 @@ impl LinUdpClient {
             return;
         }
 
-        let valid_payload = ((data.len() == 5) || data.len() == (5 + record.as_ref().
-            unwrap().size() as usize));
+        let valid_payload = (data.len() == 5) || data.len() == (5 + record.as_ref().
+            unwrap().size() as usize);
 
         if !valid_payload {
             return;
         }
 
         if data.len() == 5 && record.unwrap().master() == 0 {
-            self.write_header();
+            self.write_header().await;
             self.read_lin_and_send_udp();
         } else {
-            self.write_header();
-            // record.unwrap().set_write_cache(data.as_slice());
+            self.write_header().await;
+            self.send_over_serial().await;
         }
-        self.send_over_serial().await;
     }
 
     pub async fn send_over_serial(&self) {
@@ -78,8 +79,11 @@ impl LinUdpClient {
         // todo!()
     }
 
-    pub fn write_header(&self) {
-        // todo!()
+    pub async fn write_header(&self) {
+        let mut serial_port = self.serial.lock().await;
+        serial_port.set_baud_rate(9600).unwrap();
+        serial_port.write(&[0x00]).unwrap();
+        serial_port.set_baud_rate(19_200).unwrap();
     }
 
     pub fn read_lin_and_send_udp(&self) {
