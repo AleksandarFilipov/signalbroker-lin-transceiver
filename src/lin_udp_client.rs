@@ -112,6 +112,7 @@ impl LinUdpClient {
             let client = self.udp_client_listener.clone();
             let new_data = self.new_data.clone();
             let data = self.data.clone();
+            let config = self.config.clone();
             async move {
                 loop {
                     println!("client={:#?}", client);
@@ -119,6 +120,7 @@ impl LinUdpClient {
                     let len = client.lock().await.as_ref().unwrap().recv(&mut buf).await.unwrap();
                     *data.lock().await = buf[..len as usize].to_owned();
                     *new_data.lock().await = true;
+                    config.increment_rx_over_udp().await;
                     println!("Received {} bytes with data {:#?}", len, &buf[..len as usize]);
                 }
             }
