@@ -7,6 +7,12 @@ use std::{
 use byteorder::{BigEndian, ByteOrder};
 use tokio::{net::UdpSocket, sync::Mutex, time::sleep};
 
+use crate::record::Record;
+use std::error::Error;
+use std::ops::Sub;
+use std::time::SystemTime;
+use crate::records::Records;
+
 pub const HEADER: u8 = 0x04;
 pub const HOST_PORT: u8 = 0x01;
 pub const CLIENT_PORT: u8 = 0x02;
@@ -14,7 +20,13 @@ pub const MESSAGE_SIZES: u8 = 0x04;
 pub const NODE_MODE: u8 = 0x08;
 pub const HEART_BEAT: u8 = 0x10;
 pub const NAD: u8 = 0x20;
-pub const LOGGER: u8 = 0x60;
+// pub const LOGGER: u8 = 0x60;
+
+#[repr(u8)]
+pub enum NodeMode {
+    Slave,
+    Master,
+}
 
 #[repr(u8)]
 pub enum ServerMessageOffsets {
@@ -37,6 +49,15 @@ pub enum HeartBeatModes {
     SyncCount,
     UnSynchedPackages,
     SynchedPackages,
+}
+
+impl From<NodeMode> for u8 {
+    fn from(val: NodeMode) -> Self {
+        match val {
+            NodeMode::Slave => 0x00,
+            NodeMode::Master => 0x01,
+        }
+    }
 }
 
 impl From<HeartBeatModes> for u8 {
@@ -68,6 +89,51 @@ impl From<ServerMessageOffsets> for u8 {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Counter {
+    rx_over_lin: u16,
+    tx_over_lin: u16,
+    rx_over_udp: u16,
+    tx_over_udp: u16,
+    sync_count: u16,
+    unsynched_packages: u16,
+    synched_packages: u16,
+}
+
+impl Counter {
+    fn new() -> Self {
+        Self {
+            rx_over_lin: 0,
+            tx_over_lin: 0,
+            rx_over_udp: 0,
+            tx_over_udp: 0,
+            sync_count: 0,
+            unsynched_packages: 0,
+            synched_packages: 0,
+        }
+    }
+
+    pub fn increment_rx_over_lin(&mut self) {
+        println!("Incrementing LIN");
+        self.rx_over_lin += 1;
+    }
+
+    pub fn increment_rx_over_udp(&mut self) {
+        println!("Incrementing UDP");
+        self.rx_over_udp += 1;
+    }
+
+    fn clear_counters(&mut self) {
+        self.rx_over_lin = 0;
+        self.tx_over_lin = 0;
+        self.rx_over_udp = 0;
+        self.tx_over_udp = 0;
+        self.sync_count = 0;
+        self.unsynched_packages = 0;
+        self.synched_packages = 0;
+    }
+}
+
 struct ConfigHash {
     device_hash: Arc<Mutex<u16>>,
     client_port_hash: Arc<Mutex<u16>>,
@@ -79,159 +145,253 @@ struct ConfigHash {
 
 impl ConfigHash {
     fn new() -> Self {
-        let defualt_hash = 0xFFFF_u16;
+        let default_hash = 0xFFFF_u16;
 
         Self {
-            device_hash: Arc::new(Mutex::new(defualt_hash)),
-            client_port_hash: Arc::new(Mutex::new(defualt_hash)),
-            host_port_hash: Arc::new(Mutex::new(defualt_hash)),
-            node_mode_hash: Arc::new(Mutex::new(defualt_hash)),
-            message_sizes_hash: Arc::new(Mutex::new(defualt_hash)),
-            nad_hash: Arc::new(Mutex::new(defualt_hash)),
+            device_hash: Arc::new(Mutex::new(default_hash)),
+            client_port_hash: Arc::new(Mutex::new(default_hash)),
+            host_port_hash: Arc::new(Mutex::new(default_hash)),
+            node_mode_hash: Arc::new(Mutex::new(default_hash)),
+            message_sizes_hash: Arc::new(Mutex::new(default_hash)),
+            nad_hash: Arc::new(Mutex::new(default_hash)),
         }
     }
 }
 
 struct UdpPort {
-    udp_server_config_port: Arc<Mutex<u16>>,
-    udp_target_config_port: Arc<Mutex<u16>>,
-    udp_lin_host_port: Arc<Mutex<u16>>,
-    udp_lin_client_port: Arc<Mutex<u16>>,
+    udp_server_config_port: u16,
+    udp_target_config_port: u16,
+    udp_lin_host_port: u16,
+    udp_lin_client_port: u16,
 }
 
 impl UdpPort {
     fn new() -> Self {
         Self {
-            udp_server_config_port: Arc::new(Mutex::new(4001)),
-            udp_target_config_port: Arc::new(Mutex::new(4000)),
-            udp_lin_client_port: Arc::new(Mutex::new(0)),
-            udp_lin_host_port: Arc::new(Mutex::new(0)),
+            udp_server_config_port: 4001,
+            udp_target_config_port: 4000,
+            udp_lin_client_port: 0,
+            udp_lin_host_port: 0,
         }
     }
 }
 
 pub struct Config {
     rib_id: u8,
-    udp_ports: UdpPort,
-    udp_server_listen_client: Arc<Mutex<UdpSocket>>,
-    udp_server_send_client: Arc<Mutex<UdpSocket>>,
+    udp_ports: Arc<Mutex<UdpPort>>,
+    udp_server_listen_client: Arc<Mutex<Option<UdpSocket>>>,
+    udp_server_send_client: Arc<Mutex<Option<UdpSocket>>>,
     heart_beat_period: u64,
-    ip_address_server: IpAddr,
+    ip_address_server: Arc<Mutex<IpAddr>>,
     hashes: ConfigHash,
     server_data: Arc<Mutex<Vec<u8>>>,
     new_data: Arc<Mutex<bool>>,
+    records: Arc<Mutex<Records>>,
+    counters: Arc<Mutex<Counter>>,
+    node_mode: Arc<Mutex<u8>>,
+    nad: Arc<Mutex<u8>>,
+    received_ip: Arc<Mutex<bool>>,
+    latest_updated_time: Arc<Mutex<SystemTime>>,
 }
 
 impl Config {
-    pub async fn new(rib_id: u8) -> Self {
+    pub fn new(rib_id: u8, records: Arc<Mutex<Records>>) -> Self {
         Self {
             rib_id,
-            udp_ports: UdpPort::new(),
-            udp_server_listen_client: Arc::new(Mutex::new(
-                UdpSocket::bind("[::]:4000").await.unwrap(),
-            )),
-            udp_server_send_client: Arc::new(Mutex::new(UdpSocket::bind("[::]:0").await.unwrap())),
+            udp_ports: Arc::new(Mutex::new(UdpPort::new())),
+            udp_server_listen_client: Arc::new(Mutex::new(None)),
+            udp_server_send_client: Arc::new(Mutex::new(None)),
             heart_beat_period: 2500,
-            ip_address_server: IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)),
+            ip_address_server: Arc::new(Mutex::new(IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)))),
             hashes: ConfigHash::new(),
             server_data: Arc::new(Mutex::new(vec![0u8; 128])),
             new_data: Arc::new(Mutex::new(false)),
+            records,
+            counters: Arc::new(Mutex::new(Counter::new())),
+            node_mode: Arc::new(Mutex::new(0)),
+            nad: Arc::new(Mutex::new(0)),
+            received_ip: Arc::new(Mutex::new(false)),
+            latest_updated_time: Arc::new(Mutex::new(SystemTime::now().sub(Duration::from_secs(5)))),
         }
     }
 
+    pub async fn init(&self) -> Result<(), Box<dyn Error>> {
+        let udp_ports = self.udp_ports.lock().await;
+        let udp_server_listen_address = format!("0.0.0.0:{}", udp_ports.udp_target_config_port);
+
+        *self.udp_server_listen_client.lock().await = Some(UdpSocket::bind(udp_server_listen_address).await?);
+        *self.udp_server_send_client.lock().await = Some(UdpSocket::bind("0.0.0.0:0").await?);
+
+        Ok(())
+    }
+
+    pub async fn increment_rx_over_lin(&self) {
+        self.counters.lock().await.rx_over_lin += 1;
+    }
+
+    pub async fn increment_rx_over_udp(&self) {
+        self.counters.lock().await.rx_over_udp += 1;
+    }
+
+    pub async fn host_ip(&self) -> IpAddr {
+        self.ip_address_server.lock().await.clone()
+    }
+
+    pub async fn host_port(&self) -> u16 {
+        self.udp_ports.lock().await.udp_lin_host_port
+    }
+
+    pub async fn client_port(&self) -> u16 {
+        self.udp_ports.lock().await.udp_lin_client_port
+    }
+
+    pub async fn received_ip(&self) -> bool {
+        *self.received_ip.clone().lock().await
+    }
+
+    pub async fn node_mode(&self) -> u8 {
+        *self.node_mode.clone().lock().await
+    }
+
     pub async fn run(&self) {
-        self.udp_server_send_client
-            .lock()
-            .await
-            .connect("localhost:4001")
+        let udp_server_send_client_port = self.udp_ports.lock().await.udp_server_config_port;
+        let address = format!("0.0.0.0:{}", udp_server_send_client_port);
+        self.udp_server_send_client.lock().await.as_ref().unwrap().set_broadcast(true).unwrap();
+
+        self.udp_server_send_client.lock().await
+            .as_ref()
+            .unwrap()
+            .connect(&address)
             .await
             .unwrap();
+
 
         tokio::spawn({
             let client = self.udp_server_listen_client.clone();
             let server_data = self.server_data.clone();
             let new_data = self.new_data.clone();
+            let ip = self.ip_address_server.clone();
+            let received_ip = self.received_ip.clone();
             async move {
                 loop {
                     let mut data = vec![0; 128];
-                    let len = client.lock().await.recv(&mut data).await.unwrap();
+                    let (len, address) = client.lock().await.as_ref().unwrap().recv_from(&mut data).await.unwrap();
                     *server_data.lock().await = data.clone();
                     *new_data.lock().await = true;
-                    println!("Received {} bytes with data {:#?}", len, &data[..len]);
+                    *ip.lock().await = address.ip();
+                    let mut received_ip = received_ip.lock().await;
+                    if !*received_ip {
+                        *received_ip = true;
+                    }
+                    println!(
+                        "Received {} bytes from {} with data {:#?}",
+                        len,
+                        address.ip(),
+                        &data[..len]
+                    );
                 }
             }
         });
 
         loop {
-            let mut device_hash = self.hashes.device_hash.lock().await;
-
-            self.send_heartbeat(*device_hash).await;
-            self.parse_server_message(&mut device_hash).await;
-            self.verify_config(&mut device_hash).await;
+            self.send_heartbeat().await;
+            self.parse_server_message().await;
+            self.verify_config().await;
         }
     }
 
-    async fn send_heartbeat(&self, device_hash: u16) {
-        sleep(Duration::from_millis(self.heart_beat_period)).await;
+    async fn send_heartbeat(&self) {
+        let time = std::time::SystemTime::now();
+        let mut latest_time = self.latest_updated_time.lock().await;
+        if time.duration_since(*latest_time).unwrap() > Duration::from_millis(self.heart_beat_period) {
+            *latest_time = time;
 
-        let mut data = Vec::default();
-        data.push(HEADER); // HEADER
-        data.push(self.rib_id); // RIB_ID
-        data.push(((device_hash >> 8) & 0xFF) as u8); // LAST_HASH_LOW
-        data.push((device_hash & 0xFF) as u8); // LAST_HASH_HIGH
-        data.push(HEART_BEAT); // HEARTBEAT
+            let device_hash;
+            let rx_over_lin;
+            let tx_over_lin;
+            let rx_over_udp;
+            let tx_over_udp;
+            let sync_count;
+            let unsynched_packages;
+            let synched_packages;
 
-        // Payload length
-        data.push(0x00);
-        data.push(0x15);
+            // prevent deadlocks by only held it in this scope
+            {
+                device_hash = self.hashes.device_hash.lock().await.to_be_bytes();
+                let counters = self.counters.lock().await;
+                rx_over_lin = counters.rx_over_lin.to_be_bytes();
+                tx_over_lin = counters.tx_over_lin.to_be_bytes();
+                rx_over_udp = counters.rx_over_udp.to_be_bytes();
+                tx_over_udp = counters.tx_over_udp.to_be_bytes();
+                sync_count = counters.sync_count.to_be_bytes();
+                unsynched_packages = counters.unsynched_packages.to_be_bytes();
+                synched_packages = counters.synched_packages.to_be_bytes();
+            }
 
-        // RxOverLin
-        data.push(HeartBeatModes::RxLin.into());
-        data.push(0x00);
-        data.push(0x00);
+            let mut data = Vec::with_capacity(30);
+            data.push(HEADER); // HEADER
+            data.push(self.rib_id); // RIB_ID
+            data.push(device_hash[0]); // LAST_HASH_LOW
+            data.push(device_hash[1]); // LAST_HASH_HIGH
+            data.push(HEART_BEAT); // HEARTBEAT
 
-        // TxOverLin
-        data.push(HeartBeatModes::TxLin.into());
-        data.push(0x00);
-        data.push(0x00);
+            // Payload length
+            data.push(0x00);
+            data.push(0x15);
 
-        // RxOverUDP
-        data.push(HeartBeatModes::RxUdp.into());
-        data.push(0x00);
-        data.push(0x00);
+            // RxOverLin
+            data.push(HeartBeatModes::RxLin.into());
+            data.push(rx_over_lin[0]);
+            data.push(rx_over_lin[1]);
 
-        // TxOverUDP
-        data.push(HeartBeatModes::TxUdp.into());
-        data.push(0x00);
-        data.push(0x00);
+            // TxOverLin
+            data.push(HeartBeatModes::TxLin.into());
+            data.push(tx_over_lin[0]);
+            data.push(tx_over_lin[1]);
 
-        // SyncCount
-        data.push(HeartBeatModes::SyncCount.into());
-        data.push(0x00);
-        data.push(0x00);
+            // RxOverUDP
+            data.push(HeartBeatModes::RxUdp.into());
+            data.push(rx_over_udp[0]);
+            data.push(rx_over_udp[1]);
 
-        // UnSynchedPackages
-        data.push(HeartBeatModes::UnSynchedPackages.into());
-        data.push(0x00);
-        data.push(0x00);
+            // TxOverUDP
+            data.push(HeartBeatModes::TxUdp.into());
+            data.push(tx_over_udp[0]);
+            data.push(tx_over_udp[1]);
 
-        // SynchedPackages
-        data.push(HeartBeatModes::SynchedPackages.into());
-        data.push(0x00);
-        data.push(0x00);
+            // SyncCount
+            data.push(HeartBeatModes::SyncCount.into());
+            data.push(sync_count[0]);
+            data.push(sync_count[1]);
 
-        self.udp_server_send_client
-            .lock()
-            .await
-            .send(&data)
-            .await
-            .unwrap();
+            // UnSynchedPackages
+            data.push(HeartBeatModes::UnSynchedPackages.into());
+            data.push(unsynched_packages[0]);
+            data.push(unsynched_packages[1]);
+
+            // SynchedPackages
+            data.push(HeartBeatModes::SynchedPackages.into());
+            data.push(unsynched_packages[0]);
+            data.push(synched_packages[1]);
+
+            self.udp_server_send_client
+                .lock()
+                .await
+                .as_ref()
+                .unwrap()
+                .send(&data)
+                .await
+                .unwrap();
+
+            self.counters.lock().await.clear_counters();
+        }
     }
 
-    async fn verify_config(&self, device_hash: &mut u16) {
+    async fn verify_config(&self) {
         let mut good_config = false;
 
         while !good_config {
+            let device_hash;
             let client_port_hash: u16;
             let host_port_hash: u16;
             let node_mode_hash: u16;
@@ -240,6 +400,7 @@ impl Config {
 
             // prevent deadlocks by only held the lock in this scope.
             {
+                device_hash = *self.hashes.device_hash.lock().await;
                 client_port_hash = *self.hashes.client_port_hash.lock().await;
                 host_port_hash = *self.hashes.host_port_hash.lock().await;
                 node_mode_hash = *self.hashes.node_mode_hash.lock().await;
@@ -249,37 +410,42 @@ impl Config {
 
             good_config = true;
 
-            if host_port_hash != *device_hash {
+            if host_port_hash != device_hash {
                 good_config = false;
-                self.request_config_item(HOST_PORT, *device_hash).await;
-            } else if client_port_hash != *device_hash {
+                self.request_config_item(HOST_PORT).await;
+            } else if client_port_hash != device_hash {
                 good_config = false;
-                self.request_config_item(CLIENT_PORT, *device_hash).await;
-            } else if node_mode_hash != *device_hash {
+                self.request_config_item(CLIENT_PORT).await;
+            } else if node_mode_hash != device_hash {
                 good_config = false;
-                self.request_config_item(NODE_MODE, *device_hash).await;
-            } else if message_sizes_hash != *device_hash {
+                self.request_config_item(NODE_MODE).await;
+            } else if message_sizes_hash != device_hash {
                 good_config = false;
-                self.request_config_item(MESSAGE_SIZES, *device_hash).await;
-            } else if nad_hash != *device_hash {
+                self.request_config_item(MESSAGE_SIZES).await;
+            } else if nad_hash != device_hash {
                 good_config = false;
-                self.request_config_item(NAD, *device_hash).await;
+                self.request_config_item(NAD).await;
             }
 
             if !good_config {
-                sleep(Duration::from_millis(200)).await;
-                self.parse_server_message(device_hash).await;
+                sleep(Duration::from_millis(10)).await;
+                self.parse_server_message().await;
             }
         }
     }
 
-    async fn request_config_item(&self, item: u8, hash: u16) {
-        let mut data = Vec::default();
+    async fn request_config_item(&self, item: u8) {
+        let mut data = Vec::with_capacity(10);
+
+        let device_hash;
+        {
+            device_hash = self.hashes.device_hash.lock().await.to_be_bytes();
+        }
 
         data.push(HEADER);
         data.push(self.rib_id);
-        data.push(((hash >> 8) & 0xFF) as u8); // LAST_HASH_LOW
-        data.push((hash & 0xFF) as u8); // LAST_HASH_HIGH
+        data.push(device_hash[0]); // LAST_HASH_LOW
+        data.push(device_hash[1]); // LAST_HASH_HIGH
         data.push(item);
         data.push(0x00);
         data.push(0x00);
@@ -289,12 +455,19 @@ impl Config {
         self.udp_server_send_client
             .lock()
             .await
+            .as_ref()
+            .unwrap()
             .send(&data)
             .await
             .unwrap();
     }
 
-    async fn parse_server_message(&self, device_hash: &mut u16) {
+    async fn parse_server_message(&self) {
+        let device_hash;
+        {
+            device_hash = *self.hashes.device_hash.lock().await;
+        }
+
         let data = self.server_data.lock().await;
         let mut new_data = self.new_data.lock().await;
 
@@ -304,14 +477,14 @@ impl Config {
 
         *new_data = false;
 
-        // if the first bytes isn't the HEADER identifier or if the message isn't inteded for this ID
+        // if the first bytes isn't the HEADER identifier or if the message isn't intended for this ID
         if HEADER != data[ServerMessageOffsets::Header as usize]
             || self.rib_id != data[ServerMessageOffsets::RibId as usize]
         {
-            println!("Didn't match exptected");
+            println!("Didn't match expected");
         }
 
-        *device_hash = BigEndian::read_u16(
+        *self.hashes.device_hash.lock().await = BigEndian::read_u16(
             &data[(ServerMessageOffsets::HashHigh as usize)
                 ..=(ServerMessageOffsets::HashLow as usize)],
         );
@@ -327,7 +500,7 @@ impl Config {
 
         match data[ServerMessageOffsets::Identifier as usize] {
             HOST_PORT => {
-                println!("Recievced hostport config");
+                println!("Received hostport config");
                 if message_size != 2 {
                     return;
                 }
@@ -335,11 +508,11 @@ impl Config {
                     &data[(ServerMessageOffsets::PayloadStart as usize)
                         ..=(ServerMessageOffsets::PayloadStart as usize + 1)],
                 );
-                *self.udp_ports.udp_lin_host_port.lock().await = host_port;
-                *self.hashes.host_port_hash.lock().await = *device_hash;
+                self.udp_ports.lock().await.udp_lin_host_port = host_port;
+                *self.hashes.host_port_hash.lock().await = device_hash;
             }
             CLIENT_PORT => {
-                println!("Recievced clientport config");
+                println!("Received clientport config");
                 if message_size != 2 {
                     return;
                 }
@@ -347,48 +520,49 @@ impl Config {
                     &data[(ServerMessageOffsets::PayloadStart as usize)
                         ..=(ServerMessageOffsets::PayloadStart as usize + 1)],
                 );
-                *self.udp_ports.udp_lin_client_port.lock().await = client_port;
-                *self.hashes.client_port_hash.lock().await = *device_hash;
+                self.udp_ports.lock().await.udp_lin_client_port = client_port;
+                *self.hashes.client_port_hash.lock().await = device_hash;
             }
             MESSAGE_SIZES => {
-                println!("Recievced message_sizes config");
+                println!("Received message_sizes config");
 
-                let record_entries = message_size / 3;
-
+                let count = ServerMessageOffsets::PayloadStart as usize;
+                let record_size: usize = 3;
+                let record_entries = message_size as usize / record_size;
                 println!("Record entries {}", record_entries);
 
-                let mut count = ServerMessageOffsets::PayloadStart as usize;
+                let records = (count..count + (record_entries * record_size))
+                    .step_by(record_size)
+                    .map(|v| {
+                        let id = data[v];
+                        let size = data[v + 1];
+                        let master = data[v + 2];
+                        Record::new(id, size, master)
+                    })
+                    .collect::<Vec<Record>>();
+                println!("Records: {:#?}", records);
 
-                for _s in 0..record_entries as usize {
-                    let id = data[count];
-                    count += 1;
-                    let size = data[count];
-                    count += 1;
-                    let master = data[count];
-                    count += 1;
-
-                    println!("id: {}, size: {}, master: {}", id, size, master);
-                }
-
-                *self.hashes.message_sizes_hash.lock().await = *device_hash;
+                self.records.lock().await.set_list(records);
+                *self.hashes.message_sizes_hash.lock().await = device_hash;
             }
             NODE_MODE => {
-                println!("Recievced node_mode config");
+                println!("Received node_mode config");
                 if message_size != 1 {
                     return;
                 }
                 let node_mode = data[(ServerMessageOffsets::PayloadStart) as usize];
-                println!("Nodemode {}", node_mode);
-                *self.hashes.node_mode_hash.lock().await = *device_hash;
+                *self.node_mode.lock().await = node_mode;
+                *self.hashes.node_mode_hash.lock().await = device_hash;
             }
             NAD => {
-                println!("Recievced nad config");
+                println!("Received nad config");
                 if message_size != 1 {
                     return;
                 }
                 let nad = data[(ServerMessageOffsets::PayloadStart) as usize];
                 println!("NAD: {}", nad);
-                *self.hashes.nad_hash.lock().await = *device_hash;
+                *self.nad.lock().await = nad;
+                *self.hashes.nad_hash.lock().await = device_hash;
             }
             _ => {}
         }
