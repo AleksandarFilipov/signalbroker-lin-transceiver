@@ -9,7 +9,7 @@ use tokio::{net::UdpSocket, sync::Mutex, time::sleep};
 
 use crate::record::Record;
 use std::error::Error;
-use std::ops::Sub;
+use std::ops::{Sub};
 use std::time::SystemTime;
 use crate::records::Records;
 
@@ -23,9 +23,11 @@ pub const NAD: u8 = 0x20;
 // pub const LOGGER: u8 = 0x60;
 
 #[repr(u8)]
+#[derive(Clone)]
 pub enum NodeMode {
     Slave,
     Master,
+    Undefined = 0xFF,
 }
 
 #[repr(u8)]
@@ -51,11 +53,23 @@ pub enum HeartBeatModes {
     SynchedPackages,
 }
 
+impl From<u8> for NodeMode {
+    fn from(val: u8) -> Self {
+        match val {
+            0x00 => NodeMode::Slave,
+            0x01 => NodeMode::Master,
+            0xFF => NodeMode::Undefined,
+            _ => todo!()
+        }
+    }
+}
+
 impl From<NodeMode> for u8 {
     fn from(val: NodeMode) -> Self {
         match val {
             NodeMode::Slave => 0x00,
             NodeMode::Master => 0x01,
+            NodeMode::Undefined => 0xFF,
         }
     }
 }
@@ -111,16 +125,6 @@ impl Counter {
             unsynched_packages: 0,
             synched_packages: 0,
         }
-    }
-
-    pub fn increment_rx_over_lin(&mut self) {
-        println!("Incrementing LIN");
-        self.rx_over_lin += 1;
-    }
-
-    pub fn increment_rx_over_udp(&mut self) {
-        println!("Incrementing UDP");
-        self.rx_over_udp += 1;
     }
 
     fn clear_counters(&mut self) {
@@ -188,7 +192,7 @@ pub struct Config {
     new_data: Arc<Mutex<bool>>,
     records: Arc<Mutex<Records>>,
     counters: Arc<Mutex<Counter>>,
-    node_mode: Arc<Mutex<u8>>,
+    node_mode: Arc<Mutex<NodeMode>>,
     nad: Arc<Mutex<u8>>,
     received_ip: Arc<Mutex<bool>>,
     latest_updated_time: Arc<Mutex<SystemTime>>,
@@ -208,7 +212,7 @@ impl Config {
             new_data: Arc::new(Mutex::new(false)),
             records,
             counters: Arc::new(Mutex::new(Counter::new())),
-            node_mode: Arc::new(Mutex::new(0)),
+            node_mode: Arc::new(Mutex::new(NodeMode::Undefined)),
             nad: Arc::new(Mutex::new(0)),
             received_ip: Arc::new(Mutex::new(false)),
             latest_updated_time: Arc::new(Mutex::new(SystemTime::now().sub(Duration::from_secs(5)))),
@@ -233,6 +237,14 @@ impl Config {
         self.counters.lock().await.rx_over_udp += 1;
     }
 
+    pub async fn increment_tx_over_udp(&self) {
+        self.counters.lock().await.tx_over_udp += 1;
+    }
+
+    pub async fn increment_tx_over_lin(&self) {
+        self.counters.lock().await.tx_over_lin += 1;
+    }
+
     pub async fn host_ip(&self) -> IpAddr {
         self.ip_address_server.lock().await.clone()
     }
@@ -249,8 +261,8 @@ impl Config {
         *self.received_ip.clone().lock().await
     }
 
-    pub async fn node_mode(&self) -> u8 {
-        *self.node_mode.clone().lock().await
+    pub async fn node_mode(&self) -> NodeMode {
+        self.node_mode.lock().await.clone()
     }
 
     pub async fn run(&self) {
@@ -430,7 +442,7 @@ impl Config {
             }
 
             if !good_config {
-                sleep(Duration::from_millis(10)).await;
+                sleep(Duration::from_millis(100)).await;
                 self.parse_server_message().await;
             }
         }
@@ -553,7 +565,7 @@ impl Config {
                     return;
                 }
                 let node_mode = data[(ServerMessageOffsets::PayloadStart) as usize];
-                *self.node_mode.lock().await = node_mode;
+                *self.node_mode.lock().await = node_mode.into();
                 *self.hashes.node_mode_hash.lock().await = device_hash;
             }
             NAD => {
