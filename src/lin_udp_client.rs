@@ -86,6 +86,8 @@ impl LinUdpClient {
         // todo!()
     }
 
+    pub async fn run_slave(&self) {}
+
     pub async fn run(&self) {
         while !self.config.received_ip().await {
             tokio::time::sleep(Duration::from_millis(500)).await;
@@ -130,6 +132,7 @@ impl LinUdpClient {
             match self.config.node_mode().await {
                 0x00 => {
                     // println!("Running slave");
+                    self.run_slave().await;
                 }
                 0x01 => {
                     self.run_master().await;
