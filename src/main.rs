@@ -2,10 +2,7 @@ use std::{error::Error, sync::Arc};
 
 use config::Config;
 use lin_udp_client::LinUdpClient;
-use record::Record;
 use tokio::sync::Mutex;
-use tokio::time::sleep;
-use std::time::Duration;
 use records::Records;
 
 mod config;
@@ -30,8 +27,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             config.run().await;
         }
     });
-
-    // sleep(Duration::from_secs(10)).await;
 
     lin_udp_client.run().await;
     Ok(())
