@@ -361,12 +361,14 @@ void LinUdpGateway::runMaster() {
 
     // If the packet length is equal to 5 and the record isn't a master
     // Then it is an arbitration frame...
-    if (m_packetBufferLength == minPacketBufferLength && !record->master()) {
-        // this is an arbitration frame
-        // Send arbitration message (only the header)
-        writeHeader(id);
-        // wait until the slave respond and consume the result
-        readLinAndSendOnUdp(id);
+    if (m_packetBufferLength == minPacketBufferLength) {
+        if (!record->master()) {
+            // this is an arbitration frame
+            // Send arbitration message (only the header)
+            writeHeader(id);
+            // wait until the slave respond and consume the result
+            readLinAndSendOnUdp(id);
+        }
     } else {
         // this a master frame. Send it all..
         writeHeader(id);
