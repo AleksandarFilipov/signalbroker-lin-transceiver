@@ -255,7 +255,9 @@ impl Config {
 
     pub async fn run(&self) {
         let udp_server_send_client_port = self.udp_ports.lock().await.udp_server_config_port;
-        let address = format!("0.0.0.0:{}", udp_server_send_client_port);
+        let udp_server_send_client_address = *self.ip_address_server.lock().await;
+        let address = format!("{}:{}", udp_server_send_client_address, udp_server_send_client_port);
+        // Add permission to broadcast to entire network
         self.udp_server_send_client.lock().await.as_ref().unwrap().set_broadcast(true).unwrap();
 
         self.udp_server_send_client.lock().await
