@@ -1,3 +1,6 @@
+use std::io::Write;
+use byteorder::WriteBytesExt;
+
 /// A record held LIN-frame data.
 ///
 /// `id` is equal to a LIN-frame ID
@@ -13,7 +16,7 @@ pub struct Record {
     size: u8,
     master: u8,
     cache_valid: bool,
-    write_cache: [u8; 8],
+    write_cache: Vec<u8>,
 }
 
 impl Record {
@@ -23,7 +26,7 @@ impl Record {
             size,
             master,
             cache_valid: false,
-            write_cache: [0x00; 8],
+            write_cache: Vec::with_capacity(8),
         }
     }
 
@@ -35,15 +38,19 @@ impl Record {
         self.size
     }
 
-    pub fn master(&self) -> u8 {
-        self.master
+    pub fn is_master(&self) -> bool {
+        self.master == 1
     }
 
     pub fn cache_valid(&self) -> bool {
         self.cache_valid
     }
 
-    pub fn set_write_cache(&mut self, data: [u8; 8]) {
-        self.write_cache = data;
+    pub fn set_write_cache(&mut self, data: &[u8]) {
+        self.write_cache.write(&data).unwrap();
+    }
+
+    pub fn cache(&self) -> &[u8] {
+        &self.write_cache[..self.size as usize]
     }
 }
