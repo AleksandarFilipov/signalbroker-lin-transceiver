@@ -8,10 +8,10 @@ use byteorder::{BigEndian, ByteOrder};
 use tokio::{net::UdpSocket, sync::Mutex, time::sleep};
 
 use crate::record::Record;
-use std::error::Error;
-use std::ops::{Sub};
-use std::time::SystemTime;
 use crate::records::Records;
+use std::error::Error;
+use std::ops::Sub;
+use std::time::SystemTime;
 
 pub const HEADER: u8 = 0x04;
 pub const HOST_PORT: u8 = 0x01;
@@ -59,7 +59,7 @@ impl From<u8> for NodeMode {
             0x00 => NodeMode::Slave,
             0x01 => NodeMode::Master,
             0xFF => NodeMode::Undefined,
-            _ => todo!()
+            _ => todo!(),
         }
     }
 }
@@ -183,7 +183,6 @@ impl UdpPort {
 pub struct Config {
     rib_id: u8,
     udp_ports: Arc<Mutex<UdpPort>>,
-    udp_server_listen_client: Arc<Mutex<Option<UdpSocket>>>,
     udp_server_send_client: Arc<Mutex<Option<UdpSocket>>>,
     heart_beat_period: u64,
     ip_address_server: Arc<Mutex<IpAddr>>,
@@ -203,7 +202,6 @@ impl Config {
         Self {
             rib_id,
             udp_ports: Arc::new(Mutex::new(UdpPort::new())),
-            udp_server_listen_client: Arc::new(Mutex::new(None)),
             udp_server_send_client: Arc::new(Mutex::new(None)),
             heart_beat_period: 2500,
             ip_address_server: Arc::new(Mutex::new(IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)))),
@@ -215,18 +213,28 @@ impl Config {
             node_mode: Arc::new(Mutex::new(NodeMode::Undefined)),
             nad: Arc::new(Mutex::new(0)),
             received_ip: Arc::new(Mutex::new(false)),
-            latest_updated_time: Arc::new(Mutex::new(SystemTime::now().sub(Duration::from_secs(5)))),
+            latest_updated_time: Arc::new(Mutex::new(
+                SystemTime::now().sub(Duration::from_secs(5)),
+            )),
         }
     }
 
     pub async fn init(&self) -> Result<(), Box<dyn Error>> {
-        let udp_ports = self.udp_ports.lock().await;
-        let udp_server_listen_address = format!("0.0.0.0:{}", udp_ports.udp_target_config_port);
-
-        *self.udp_server_listen_client.lock().await = Some(UdpSocket::bind(udp_server_listen_address).await?);
         *self.udp_server_send_client.lock().await = Some(UdpSocket::bind("0.0.0.0:0").await?);
 
         Ok(())
+    }
+
+    pub async fn increment_un_synched_packages(&self) {
+        self.counters.lock().await.unsynched_packages += 1;
+    }
+
+    pub async fn set_synch_count(&self, val: u16) {
+        self.counters.lock().await.sync_count = val;
+    }
+
+    pub async fn increment_synched_packages(&self) {
+        self.counters.lock().await.synched_packages += 1;
     }
 
     pub async fn increment_rx_over_lin(&self) {
@@ -246,7 +254,7 @@ impl Config {
     }
 
     pub async fn host_ip(&self) -> IpAddr {
-        self.ip_address_server.lock().await.clone()
+        *self.ip_address_server.lock().await
     }
 
     pub async fn host_port(&self) -> u16 {
@@ -265,47 +273,40 @@ impl Config {
         self.node_mode.lock().await.clone()
     }
 
+    pub async fn set_server_data(&self, data: &[u8]) {
+        self.server_data.lock().await.clone_from_slice(data);
+        *self.new_data.lock().await = true;
+    }
+
+    pub async fn set_server_ip_address(&self, address: IpAddr) {
+        *self.ip_address_server.lock().await = address;
+        *self.received_ip.lock().await = true;
+    }
+
     pub async fn run(&self) {
         let udp_server_send_client_port = self.udp_ports.lock().await.udp_server_config_port;
         let udp_server_send_client_address = *self.ip_address_server.lock().await;
-        let address = format!("{}:{}", udp_server_send_client_address, udp_server_send_client_port);
+        let address = format!(
+            "{}:{}",
+            udp_server_send_client_address, udp_server_send_client_port
+        );
         // Add permission to broadcast to entire network
-        self.udp_server_send_client.lock().await.as_ref().unwrap().set_broadcast(true).unwrap();
+        self.udp_server_send_client
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .set_broadcast(true)
+            .unwrap();
 
-        self.udp_server_send_client.lock().await
+        self.udp_server_send_client
+            .lock()
+            .await
             .as_ref()
             .unwrap()
             .connect(&address)
             .await
             .unwrap();
-
-
-        tokio::spawn({
-            let client = self.udp_server_listen_client.clone();
-            let server_data = self.server_data.clone();
-            let new_data = self.new_data.clone();
-            let ip = self.ip_address_server.clone();
-            let received_ip = self.received_ip.clone();
-            async move {
-                loop {
-                    let mut data = vec![0; 128];
-                    let (len, address) = client.lock().await.as_ref().unwrap().recv_from(&mut data).await.unwrap();
-                    *server_data.lock().await = data.clone();
-                    *new_data.lock().await = true;
-                    *ip.lock().await = address.ip();
-                    let mut received_ip = received_ip.lock().await;
-                    if !*received_ip {
-                        *received_ip = true;
-                    }
-                    println!(
-                        "Received {} bytes from {} with data {:#?}",
-                        len,
-                        address.ip(),
-                        &data[..len]
-                    );
-                }
-            }
-        });
 
         loop {
             self.send_heartbeat().await;
@@ -317,7 +318,9 @@ impl Config {
     async fn send_heartbeat(&self) {
         let time = std::time::SystemTime::now();
         let mut latest_time = self.latest_updated_time.lock().await;
-        if time.duration_since(*latest_time).unwrap() > Duration::from_millis(self.heart_beat_period) {
+        if time.duration_since(*latest_time).unwrap()
+            > Duration::from_millis(self.heart_beat_period)
+        {
             *latest_time = time;
 
             let device_hash;

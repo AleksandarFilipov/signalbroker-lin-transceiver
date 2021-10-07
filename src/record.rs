@@ -1,5 +1,4 @@
 use std::io::Write;
-use byteorder::WriteBytesExt;
 
 /// A record held LIN-frame data.
 ///
@@ -42,12 +41,17 @@ impl Record {
         self.master == 1
     }
 
+    pub fn set_cache_valid(&mut self, cache_valid: bool) {
+        self.cache_valid = cache_valid;
+    }
+
     pub fn cache_valid(&self) -> bool {
         self.cache_valid
     }
 
     pub fn set_write_cache(&mut self, data: &[u8]) {
-        self.write_cache.write(&data).unwrap();
+        self.write_cache.clear();
+        self.write_cache.write_all(data).unwrap();
     }
 
     pub fn cache(&self) -> &[u8] {
