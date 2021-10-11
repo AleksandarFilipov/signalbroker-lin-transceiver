@@ -1,9 +1,11 @@
-use clap::{App, Arg};
 use std::{collections::HashMap, error::Error, net::UdpSocket, sync::Arc};
 
 use config::Config;
 use lin_udp_client::LinUdpClient;
 use records::Records;
+use serde_derive::Deserialize;
+use std::fs::File;
+use std::io::prelude::*;
 use tokio::sync::Mutex;
 
 mod config;
@@ -11,41 +13,56 @@ mod lin_udp_client;
 mod record;
 mod records;
 
-const RIB_ID: u8 = 0x04;
+#[derive(Debug, Deserialize)]
+struct UartConfig {
+    global_string: Option<String>,
+    num_ports: Option<u64>,
+    lin_ports: Vec<LinConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LinConfig {
+    uart: String,
+    rib_id: u8,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let _matches = App::new("My Super Program")
-        .version("1.0")
-        .author("Niclas Lind. <niclas.lind@volvocars.com>")
-        .about("Does awesome things")
-        .arg(
-            Arg::with_name("device-port")
-                .short("d")
-                .long("device")
-                .help("Uart Port")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("ID")
-                .short("id")
-                .long("device_id")
-                .help("RIB ID")
-                .takes_value(true),
-        )
-        .get_matches();
+    let mut file = File::open("lin_config.toml").expect("Unable to open the file");
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)
+        .expect("Unable to read the file");
 
-    let records: Arc<Mutex<Records>> = Arc::new(Mutex::new(Records::new()));
-    let config = Arc::new(Config::new(RIB_ID, Arc::clone(&records)));
-    config.init().await?;
+    let decoded: UartConfig = toml::from_str(&contents).unwrap();
+
+    let mut configs = HashMap::new();
+
+    for port in decoded.lin_ports {
+        let records: Arc<Mutex<Records>> = Arc::new(Mutex::new(Records::new()));
+        let config = Arc::new(Config::new(port.rib_id, Arc::clone(&records)));
+        config.init().await?;
+
+        configs.insert(port.rib_id, Arc::clone(&config));
+
+        tokio::spawn({
+            let config = Arc::clone(&config);
+
+            async move {
+                config.run().await;
+            }
+        });
+
+        tokio::spawn({
+            let config = Arc::clone(&config);
+            let lin_udp_client = LinUdpClient::new(config, records, &port.uart);
+            async move {
+                lin_udp_client.run().await;
+            }
+        });
+    }
 
     let signal_broker_udp_listener = UdpSocket::bind("0.0.0.0:4000")?;
-
     tokio::spawn({
-        let config = config.clone();
-
-        let mut configs = HashMap::new();
-        configs.insert(RIB_ID, config);
         async move {
             loop {
                 let mut signal_broker_data = vec![0; 128];
@@ -68,16 +85,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    let lin_udp_client =
-        LinUdpClient::new(Arc::clone(&config), Arc::clone(&records), "/dev/serial0");
+    loop {}
 
-    tokio::spawn({
-        let config = Arc::clone(&config);
-        async move {
-            config.run().await;
-        }
-    });
-
-    lin_udp_client.run().await;
     Ok(())
 }
