@@ -5,6 +5,10 @@ use std::{
 };
 
 use byteorder::{BigEndian, ByteOrder};
+use signalbroker_lin_transceiver_rp::{
+    ConfigHash, Counter, HeartBeatModes, NodeMode, ServerMessageOffsets, UdpPort, CLIENT_PORT,
+    HEADER, HEART_BEAT, HOST_PORT, MESSAGE_SIZES, NAD, NODE_MODE,
+};
 use tokio::{net::UdpSocket, sync::Mutex, time::sleep};
 
 use crate::record::Record;
@@ -13,172 +17,7 @@ use std::error::Error;
 use std::ops::Sub;
 use std::time::SystemTime;
 
-pub const HEADER: u8 = 0x04;
-pub const HOST_PORT: u8 = 0x01;
-pub const CLIENT_PORT: u8 = 0x02;
-pub const MESSAGE_SIZES: u8 = 0x04;
-pub const NODE_MODE: u8 = 0x08;
-pub const HEART_BEAT: u8 = 0x10;
-pub const NAD: u8 = 0x20;
 // pub const LOGGER: u8 = 0x60;
-
-#[repr(u8)]
-#[derive(Clone)]
-pub enum NodeMode {
-    Slave,
-    Master,
-    Undefined = 0xFF,
-}
-
-#[repr(u8)]
-pub enum ServerMessageOffsets {
-    Header,
-    RibId,
-    HashHigh,
-    HashLow,
-    Identifier,
-    PayloadSizeHigh,
-    PayloadSizeLow,
-    PayloadStart,
-}
-
-#[repr(u8)]
-pub enum HeartBeatModes {
-    TxLin,
-    RxLin,
-    TxUdp,
-    RxUdp,
-    SyncCount,
-    UnSynchedPackages,
-    SynchedPackages,
-}
-
-impl From<u8> for NodeMode {
-    fn from(val: u8) -> Self {
-        match val {
-            0x00 => NodeMode::Slave,
-            0x01 => NodeMode::Master,
-            0xFF => NodeMode::Undefined,
-            _ => todo!(),
-        }
-    }
-}
-
-impl From<NodeMode> for u8 {
-    fn from(val: NodeMode) -> Self {
-        match val {
-            NodeMode::Slave => 0x00,
-            NodeMode::Master => 0x01,
-            NodeMode::Undefined => 0xFF,
-        }
-    }
-}
-
-impl From<HeartBeatModes> for u8 {
-    fn from(val: HeartBeatModes) -> Self {
-        match val {
-            HeartBeatModes::TxLin => 0x1,
-            HeartBeatModes::RxLin => 0x2,
-            HeartBeatModes::TxUdp => 0x3,
-            HeartBeatModes::RxUdp => 0x4,
-            HeartBeatModes::SyncCount => 0x5,
-            HeartBeatModes::UnSynchedPackages => 0x6,
-            HeartBeatModes::SynchedPackages => 0x7,
-        }
-    }
-}
-
-impl From<ServerMessageOffsets> for u8 {
-    fn from(val: ServerMessageOffsets) -> Self {
-        match val {
-            ServerMessageOffsets::Header => 0x0,
-            ServerMessageOffsets::RibId => 0x1,
-            ServerMessageOffsets::HashHigh => 0x2,
-            ServerMessageOffsets::HashLow => 0x3,
-            ServerMessageOffsets::Identifier => 0x4,
-            ServerMessageOffsets::PayloadSizeHigh => 0x5,
-            ServerMessageOffsets::PayloadSizeLow => 0x6,
-            ServerMessageOffsets::PayloadStart => 0x7,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Counter {
-    rx_over_lin: u16,
-    tx_over_lin: u16,
-    rx_over_udp: u16,
-    tx_over_udp: u16,
-    sync_count: u16,
-    unsynched_packages: u16,
-    synched_packages: u16,
-}
-
-impl Counter {
-    fn new() -> Self {
-        Self {
-            rx_over_lin: 0,
-            tx_over_lin: 0,
-            rx_over_udp: 0,
-            tx_over_udp: 0,
-            sync_count: 0,
-            unsynched_packages: 0,
-            synched_packages: 0,
-        }
-    }
-
-    fn clear_counters(&mut self) {
-        self.rx_over_lin = 0;
-        self.tx_over_lin = 0;
-        self.rx_over_udp = 0;
-        self.tx_over_udp = 0;
-        self.sync_count = 0;
-        self.unsynched_packages = 0;
-        self.synched_packages = 0;
-    }
-}
-
-struct ConfigHash {
-    device_hash: Arc<Mutex<u16>>,
-    client_port_hash: Arc<Mutex<u16>>,
-    host_port_hash: Arc<Mutex<u16>>,
-    node_mode_hash: Arc<Mutex<u16>>,
-    message_sizes_hash: Arc<Mutex<u16>>,
-    nad_hash: Arc<Mutex<u16>>,
-}
-
-impl ConfigHash {
-    fn new() -> Self {
-        let default_hash = 0xFFFF_u16;
-
-        Self {
-            device_hash: Arc::new(Mutex::new(default_hash)),
-            client_port_hash: Arc::new(Mutex::new(default_hash)),
-            host_port_hash: Arc::new(Mutex::new(default_hash)),
-            node_mode_hash: Arc::new(Mutex::new(default_hash)),
-            message_sizes_hash: Arc::new(Mutex::new(default_hash)),
-            nad_hash: Arc::new(Mutex::new(default_hash)),
-        }
-    }
-}
-
-struct UdpPort {
-    udp_server_config_port: u16,
-    udp_target_config_port: u16,
-    udp_lin_host_port: u16,
-    udp_lin_client_port: u16,
-}
-
-impl UdpPort {
-    fn new() -> Self {
-        Self {
-            udp_server_config_port: 4001,
-            udp_target_config_port: 4000,
-            udp_lin_client_port: 0,
-            udp_lin_host_port: 0,
-        }
-    }
-}
 
 pub struct Config {
     rib_id: u8,
@@ -495,11 +334,11 @@ impl Config {
         *new_data = false;
 
         // if the first bytes isn't the HEADER identifier or if the message isn't intended for this ID
-        if HEADER != data[ServerMessageOffsets::Header as usize]
-            || self.rib_id != data[ServerMessageOffsets::RibId as usize]
-        {
-            println!("Didn't match expected");
-        }
+        // if HEADER != data[ServerMessageOffsets::Header as usize]
+        //     || self.rib_id != data[ServerMessageOffsets::RibId as usize]
+        // {
+        //     println!("Didn't match expected");
+        // }
 
         *self.hashes.device_hash.lock().await = BigEndian::read_u16(
             &data[(ServerMessageOffsets::HashHigh as usize)
