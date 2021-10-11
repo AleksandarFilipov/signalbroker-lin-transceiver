@@ -1,0 +1,15 @@
+[[lin_ports]]
+uart = "/dev/ttyAMA0"
+rib_id = 1
+
+[[lin_ports]]
+uart = "/dev/ttyAMA1"
+rib_id = 2
+
+[[lin_ports]]
+uart = "/dev/ttyAMA2"
+rib_id = 3
+        
+[[lin_ports]]
+uart = "/dev/ttyAMA3"
+rib_id = 4
