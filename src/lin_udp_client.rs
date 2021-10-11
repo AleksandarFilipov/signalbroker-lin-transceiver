@@ -1,12 +1,13 @@
 use byteorder::ReadBytesExt;
 use lin_bus::{checksum, classic_checksum, PID};
 use serialport::SerialPort;
+use signalbroker_lin_transceiver_rp::NodeMode;
 use std::io::{Read, Write};
 use std::{sync::Arc, time::Duration};
 use tokio::{net::UdpSocket, sync::Mutex};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
-use crate::config::{Config, NodeMode};
+use crate::config::Config;
 use crate::record::Record;
 use crate::records::Records;
 
@@ -27,6 +28,16 @@ enum PacketBufferPos {
     Payload,
 }
 
+impl From<PacketBufferPos> for usize {
+    fn from(val: PacketBufferPos) -> Self {
+        match val {
+            PacketBufferPos::Id => 3,
+            PacketBufferPos::Size => 4,
+            PacketBufferPos::Payload => 5,
+        }
+    }
+}
+
 impl LinUdpClient {
     pub fn new(config: Arc<Config>, records: Arc<Mutex<Records>>, path: &str) -> Self {
         Self {
@@ -43,7 +54,6 @@ impl LinUdpClient {
     pub async fn run_master(&self) {
         let data = self.data.lock().await;
         let mut new_data = self.new_data.lock().await;
-
         if !*new_data || data.len() < 5 {
             return;
         }
@@ -51,24 +61,26 @@ impl LinUdpClient {
         *new_data = false;
 
         let pid = PID::from_id(data[PacketBufferPos::Id as usize]);
-        let mut record_list = self.records.lock().await;
-        let record = record_list.find_by_id(pid.get_id());
-
-        if record.is_none() {
-            return;
+        let record;
+        {
+            let record_list = self.records.lock().await;
+            record = record_list.find_by_id_im(pid.get_id());
         }
 
+        let minimum_data_length = 5;
+
         if let Some(record) = record {
-            let valid_payload = (data.len() == 5) || data.len() == (5 + record.size() as usize);
+            let valid_payload = (data.len() == minimum_data_length)
+                || data.len() == (minimum_data_length + record.size() as usize);
 
             if !valid_payload {
-                warn!("Payload not valid");
+                println!("Payload not valid");
                 return;
             }
 
             // If the packet length is equal to 5 and the record isn't a master
             // Then it is an arbitration frame...
-            if data.len() == 5 {
+            if data.len() == minimum_data_length {
                 if !record.is_master() {
                     // Send arbitration message (only the header)
                     self.write_header(pid).await;
@@ -77,8 +89,10 @@ impl LinUdpClient {
                 }
             } else {
                 self.write_header(pid).await;
+                let mut records = self.records.lock().await;
+                let record = records.find_by_id(pid.get_id()).unwrap();
                 record.set_write_cache(
-                    &data[PacketBufferPos::Payload as usize
+                    &data[PacketBufferPos::Payload.into()
                         ..(PacketBufferPos::Payload as usize + record.size() as usize)],
                 );
                 self.send_over_serial(record).await;
@@ -93,26 +107,32 @@ impl LinUdpClient {
 
         let pid = PID::from_id(id);
 
+        let record_size = record.size() as usize;
+        let record_size_with_checksum = record_size + 1;
+
         // Add the frame protected ID
         send_buffer[0] = pid.get();
         // Add frame payload
-        send_buffer[1..=record.size() as usize].copy_from_slice(record.cache());
+        send_buffer[1..=record_size].copy_from_slice(record.cache());
 
         if pid.uses_classic_checksum() {
-            send_buffer[record.size() as usize + 1] =
-                classic_checksum(&send_buffer[1..=record.size() as usize]);
+            send_buffer[record_size_with_checksum] =
+                classic_checksum(&send_buffer[1..=record_size]);
         } else {
-            send_buffer[record.size() as usize + 1] =
-                checksum(pid, &send_buffer[1..=record.size() as usize]);
+            send_buffer[record_size_with_checksum] = checksum(pid, &send_buffer[1..=record_size]);
         }
 
         let mut serial = self.serial.lock().await;
 
         serial
-            .write_all(&send_buffer[1..=record.size() as usize + 1])
-            .unwrap();
+            .write_all(&send_buffer[1..=record_size_with_checksum])
+            .unwrap_or_default();
 
-        serial.flush().unwrap();
+        // Read echo from LIN-transceiver
+        let mut echo = vec![0x00u8; record_size_with_checksum];
+        serial.read_exact(&mut echo).unwrap_or_default();
+
+        // serial.flush().unwrap();
         self.config.increment_tx_over_lin().await;
     }
 
@@ -128,82 +148,88 @@ impl LinUdpClient {
         serial_port.read_exact(&mut echo).unwrap_or_default();
 
         if echo != [0x00, 0x55, pid.get()] {
-            warn!("Couldn't read echo, read={:#?}", echo);
+            println!("Couldn't read echo, read={:#?}", echo);
         }
     }
 
+    /// Read a frame on the LIN-bus and send it over UDP if it was successful
     pub async fn read_lin_and_send_udp(&self, pid: PID) {
         let mut read_buffer = [0; 12];
         read_buffer[0] = pid.get();
-        self.serial
-            .lock()
-            .await
-            .set_timeout(Duration::from_millis(10))
-            .unwrap();
-        let mut record_list = self.records.lock().await;
-        let record = record_list.find_by_id(pid.get_id());
-        if record.is_none() {
-            return;
-        }
-        let bytes_expected = record.as_ref().unwrap().size() as usize + 1;
 
-        let bytes_received = self
-            .serial
-            .lock()
-            .await
-            .read(&mut read_buffer[1..=bytes_expected])
-            .unwrap_or_default();
+        let mut serial = self.serial.lock().await;
 
-        if bytes_received != bytes_expected {
-            return;
-        }
+        serial.set_timeout(Duration::from_millis(14)).unwrap();
 
-        self.config.increment_rx_over_lin().await;
+        let record_list = self.records.lock().await;
+        let record = record_list.find_by_id_im(pid.get_id());
 
-        let mut crc_valid = true;
+        if let Some(record) = record {
+            let bytes_expected = record.size() as usize + 1;
 
-        if pid.uses_classic_checksum() {
-            let calculated_checksum = classic_checksum(&read_buffer[1..bytes_expected - 1]);
-            if calculated_checksum == read_buffer[bytes_expected] {
-                crc_valid = true;
+            let bytes_received = serial
+                .read(&mut read_buffer[1..=bytes_expected])
+                .unwrap_or_default();
+
+            if bytes_received != bytes_expected {
+                println!(
+                    "LinFrameId: {} - Payload doesn't match, bytes_expected={}, bytes_received={}",
+                    pid.get_id(),
+                    bytes_expected,
+                    bytes_received
+                );
+                return;
             }
-        } else {
-            let calculated_checksum = checksum(pid, &read_buffer[1..bytes_expected]);
-            if calculated_checksum == read_buffer[bytes_expected] {
-                crc_valid = true;
+
+            self.config.increment_rx_over_lin().await;
+
+            let mut crc_valid = false;
+
+            if pid.uses_classic_checksum() {
+                let calculated_checksum = classic_checksum(&read_buffer[1..bytes_expected]);
+                if calculated_checksum == read_buffer[bytes_expected] {
+                    crc_valid = true;
+                }
+            } else {
+                let calculated_checksum = checksum(pid, &read_buffer[1..bytes_expected]);
+                if calculated_checksum == read_buffer[bytes_expected] {
+                    crc_valid = true;
+                }
+            }
+
+            if crc_valid {
+                self.send_over_udp(pid, &read_buffer[1..=bytes_expected], record.size())
+                    .await;
             }
         }
 
-        if crc_valid {
-            self.send_over_udp(
-                pid,
-                &read_buffer[1..=bytes_expected],
-                record.unwrap().size(),
-            )
-            .await;
-        }
-
-        self.serial
-            .lock()
-            .await
-            .set_timeout(Duration::from_secs(1))
-            .unwrap();
+        serial.set_timeout(Duration::from_secs(1)).unwrap();
     }
 
+    /// Send a message with empty payload on UDP
     async fn send_empty_over_udp(&self, pid: PID) {
         self.send_over_udp(pid, &[], 0).await;
     }
 
+    /// Send a message with payload over UDP
     async fn send_over_udp(&self, pid: PID, data: &[u8], length: u8) {
         let mut to_server = [0; 13];
+        let max_udp_payload_length = 11;
 
-        if length > 11 {
+        println!("data len={}, len={}", data.len(), length);
+
+        if length > max_udp_payload_length {
+            println!(
+                "Payload length={} is greater then max={}",
+                length, max_udp_payload_length
+            );
             return;
         }
 
         to_server[PacketBufferPos::Id as usize] = pid.get_id();
         to_server[PacketBufferPos::Size as usize] = length;
         if length != 0 {
+            // This crash with LIN20
             to_server[PacketBufferPos::Payload as usize
                 ..=(PacketBufferPos::Payload as usize + length as usize)]
                 .copy_from_slice(data);
@@ -237,10 +263,8 @@ impl LinUdpClient {
             serial_buf[0] = serial_buf[1];
             serial_buf[1] = serial_buf[2];
             serial_buf[2] = serial.read_u8().unwrap_or(0x00);
-            synch_tries += 1;
+            synch_tries = (synch_tries + 1) % std::u16::MAX;
         }
-
-        println!("Received header {:#?}", &serial_buf);
 
         self.config.increment_synched_packages().await;
 
@@ -295,17 +319,21 @@ impl LinUdpClient {
 
             if let Some(record) = record {
                 let pid = PID::from_id(id);
-                if record.is_master() || !record.cache_valid() {
+
+                if record.is_master() {
+                    self.read_lin_and_send_udp(pid).await;
+                }
+
+                if !record.cache_valid() {
                     self.send_empty_over_udp(pid).await;
-                    // self.read_lin_and_send_udp(pid).await;
-                } else if record.cache_valid() {
+                } else {
                     self.send_over_serial(&record).await;
                     self.send_empty_over_udp(pid).await;
                 }
                 self.cache_udp_message(record.id()).await;
             }
         } else {
-            println!("Parity failure {} {} {}", id, pid, PID::from_id(id).get());
+            println!("Parity failure {} {}", pid, PID::from_id(id).get());
         }
     }
 
@@ -362,6 +390,8 @@ impl LinUdpClient {
                 }
             }
         });
+
+        self.serial.lock().await.flush().unwrap();
 
         loop {
             match self.config.node_mode().await {
