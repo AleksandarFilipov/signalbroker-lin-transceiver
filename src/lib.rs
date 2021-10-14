@@ -30,6 +30,9 @@ pub const NODE_MODE: u8 = 0x08;
 pub const HEART_BEAT: u8 = 0x10;
 pub const NAD: u8 = 0x20;
 
+pub const BREAK: u8 = 0x00;
+pub const SYN_FILED: u8 = 0x55;
+
 #[repr(u8)]
 #[derive(Clone)]
 pub enum NodeMode {

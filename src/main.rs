@@ -13,7 +13,7 @@ mod lin_udp_client;
 mod record;
 mod records;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 16)]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut file = File::open("lin_config.toml").expect("Unable to open the file");
     let mut contents = String::new();

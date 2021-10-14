@@ -1,11 +1,14 @@
 use byteorder::ReadBytesExt;
+use lin_bus::Frame;
 use lin_bus::{checksum, classic_checksum, PID};
 use serialport::SerialPort;
 use signalbroker_lin_transceiver_rp::NodeMode;
+use signalbroker_lin_transceiver_rp::BREAK;
+use signalbroker_lin_transceiver_rp::SYN_FILED;
 use std::io::{Read, Write};
 use std::{sync::Arc, time::Duration};
 use tokio::{net::UdpSocket, sync::Mutex};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::config::Config;
 use crate::record::Record;
@@ -101,51 +104,40 @@ impl LinUdpClient {
     }
 
     pub async fn send_over_serial(&self, record: &Record) {
-        let mut send_buffer = [0; 12];
-
         let id = record.id();
-
         let pid = PID::from_id(id);
-
-        let record_size = record.size() as usize;
-        let record_size_with_checksum = record_size + 1;
-
-        // Add the frame protected ID
-        send_buffer[0] = pid.get();
-        // Add frame payload
-        send_buffer[1..=record_size].copy_from_slice(record.cache());
-
-        if pid.uses_classic_checksum() {
-            send_buffer[record_size_with_checksum] =
-                classic_checksum(&send_buffer[1..=record_size]);
-        } else {
-            send_buffer[record_size_with_checksum] = checksum(pid, &send_buffer[1..=record_size]);
-        }
+        let frame = Frame::from_data(pid, record.cache());
 
         let mut serial = self.serial.lock().await;
-
+        serial.write_all(frame.get_data_with_checksum()).unwrap();
+        serial.flush().unwrap();
         serial
-            .write_all(&send_buffer[1..=record_size_with_checksum])
-            .unwrap_or_default();
+            .read_exact(&mut [frame.get_data_with_checksum().len() as u8])
+            .unwrap();
+
+        println!(
+            "Respond to id={:02x}, with data={:?}",
+            pid.get_id(),
+            frame.get_data_with_checksum()
+        );
 
         // Read echo from LIN-transceiver
-        let mut echo = vec![0x00u8; record_size_with_checksum];
-        serial.read_exact(&mut echo).unwrap_or_default();
+        // let mut echo = vec![0x00u8; frame.get_data_with_checksum().len()];
+        // serial.read_exact(&mut echo).unwrap();
 
-        // serial.flush().unwrap();
         self.config.increment_tx_over_lin().await;
     }
 
     pub async fn write_header(&self, pid: PID) {
-        let mut serial_port = self.serial.lock().await;
+        let mut serial = self.serial.lock().await;
 
-        serial_port.set_baud_rate(9600).unwrap();
-        serial_port.write_all(&[0x00]).unwrap();
-        serial_port.set_baud_rate(19_200).unwrap();
-        serial_port.write_all(&[0x55, pid.get()]).unwrap();
-        serial_port.flush().unwrap();
+        serial.set_baud_rate(9600).unwrap();
+        serial.write_all(&[0x00]).unwrap();
+        serial.set_baud_rate(19_200).unwrap();
+        serial.write_all(&[0x55, pid.get()]).unwrap();
+        serial.flush().unwrap();
         let mut echo = [0; 3];
-        serial_port.read_exact(&mut echo).unwrap_or_default();
+        serial.read_exact(&mut echo).unwrap_or_default();
 
         if echo != [0x00, 0x55, pid.get()] {
             println!("Couldn't read echo, read={:#?}", echo);
@@ -159,7 +151,7 @@ impl LinUdpClient {
 
         let mut serial = self.serial.lock().await;
 
-        serial.set_timeout(Duration::from_millis(14)).unwrap();
+        serial.set_timeout(Duration::from_millis(15)).unwrap();
 
         let record_list = self.records.lock().await;
         let record = record_list.find_by_id_im(pid.get_id());
@@ -172,7 +164,7 @@ impl LinUdpClient {
                 .unwrap_or_default();
 
             if bytes_received != bytes_expected {
-                println!(
+                warn!(
                     "LinFrameId: {} - Payload doesn't match, bytes_expected={}, bytes_received={}",
                     pid.get_id(),
                     bytes_expected,
@@ -181,24 +173,12 @@ impl LinUdpClient {
                 return;
             }
 
+            let frame = Frame::from_data(pid, &read_buffer[1..bytes_expected]);
+
             self.config.increment_rx_over_lin().await;
 
-            let mut crc_valid = false;
-
-            if pid.uses_classic_checksum() {
-                let calculated_checksum = classic_checksum(&read_buffer[1..bytes_expected]);
-                if calculated_checksum == read_buffer[bytes_expected] {
-                    crc_valid = true;
-                }
-            } else {
-                let calculated_checksum = checksum(pid, &read_buffer[1..bytes_expected]);
-                if calculated_checksum == read_buffer[bytes_expected] {
-                    crc_valid = true;
-                }
-            }
-
-            if crc_valid {
-                self.send_over_udp(pid, &read_buffer[1..=bytes_expected], record.size())
+            if frame.get_checksum() == read_buffer[bytes_expected] {
+                self.send_over_udp(frame.get_pid(), frame.get_data_with_checksum())
                     .await;
             }
         }
@@ -208,15 +188,17 @@ impl LinUdpClient {
 
     /// Send a message with empty payload on UDP
     async fn send_empty_over_udp(&self, pid: PID) {
-        self.send_over_udp(pid, &[], 0).await;
+        self.send_over_udp(pid, &[]).await;
     }
 
     /// Send a message with payload over UDP
-    async fn send_over_udp(&self, pid: PID, data: &[u8], length: u8) {
+    async fn send_over_udp(&self, pid: PID, data: &[u8]) {
         let mut to_server = [0; 13];
         let max_udp_payload_length = 11;
-
-        println!("data len={}, len={}", data.len(), length);
+        let length = match data.len() {
+            0 => 0_u8,
+            _ => data.len() as u8 - 1,
+        };
 
         if length > max_udp_payload_length {
             println!(
@@ -249,17 +231,22 @@ impl LinUdpClient {
         self.config.increment_tx_over_udp().await;
     }
 
+    /// Find start position of LIN-Header
+    ///
+    /// LIN-header looks like this:
+    ///
+    /// BREAK(0x00) SYN_FIELD(0x55) ID(0xXX)
+    ///
+    /// Read bytes until conditions are met, return the ID.
     pub async fn synch_header(&self) -> u8 {
         let mut serial_buf: Vec<u8> = vec![0; 3];
         let mut serial = self.serial.lock().await;
 
-        serial
-            .read_exact(serial_buf.as_mut_slice())
-            .unwrap_or_default();
+        serial.read_exact(&mut serial_buf).unwrap_or_default();
 
         let mut synch_tries = 0;
 
-        while !(serial_buf[0] == 0x00 && serial_buf[1] == 0x55) {
+        while !(serial_buf[0] == BREAK && serial_buf[1] == SYN_FILED) {
             serial_buf[0] = serial_buf[1];
             serial_buf[1] = serial_buf[2];
             serial_buf[2] = serial.read_u8().unwrap_or(0x00);
@@ -281,17 +268,15 @@ impl LinUdpClient {
         let mut new_data = self.new_data.lock().await;
 
         if !*new_data {
-            // println!("No new data from broker");
+            debug!("No new data from broker");
             return;
         }
 
         *new_data = false;
-
         if data.len() < 4 && data.len() != 0 {
             println!("Data doesn't match");
             return;
         }
-
         let id = data[PacketBufferPos::Id as usize];
 
         let mut records = self.records.lock().await;
@@ -308,7 +293,7 @@ impl LinUdpClient {
 
     pub async fn run_slave(&self) {
         let pid = self.synch_header().await;
-        let id = pid & 0x3f;
+        let id = pid & 0b0011_1111;
 
         if PID::from_id(id).get() == pid {
             let record;
@@ -320,12 +305,9 @@ impl LinUdpClient {
             if let Some(record) = record {
                 let pid = PID::from_id(id);
 
-                if record.is_master() {
-                    self.read_lin_and_send_udp(pid).await;
-                }
-
-                if !record.cache_valid() {
+                if record.is_master() || !record.cache_valid() {
                     self.send_empty_over_udp(pid).await;
+                    self.read_lin_and_send_udp(pid).await;
                 } else {
                     self.send_over_serial(&record).await;
                     self.send_empty_over_udp(pid).await;
@@ -333,7 +315,7 @@ impl LinUdpClient {
                 self.cache_udp_message(record.id()).await;
             }
         } else {
-            println!("Parity failure {} {}", pid, PID::from_id(id).get());
+            warn!("Parity failure {} {}", pid, PID::from_id(id).get());
         }
     }
 
@@ -349,7 +331,7 @@ impl LinUdpClient {
             let udp_client_sender_address = format!("{}:{}", udp_socket_ip, udp_socket_port);
             info!("client_sender_address: {}", udp_client_sender_address);
             let mut udp_sender = self.udp_client_sender.lock().await;
-            *udp_sender = Some(UdpSocket::bind("[::]:0").await.unwrap());
+            *udp_sender = Some(UdpSocket::bind("0.0.0.0:0").await.unwrap());
             udp_sender
                 .as_ref()
                 .unwrap()
@@ -391,7 +373,7 @@ impl LinUdpClient {
             }
         });
 
-        self.serial.lock().await.flush().unwrap();
+        // self.serial.lock().await.flush().unwrap();
 
         loop {
             match self.config.node_mode().await {
