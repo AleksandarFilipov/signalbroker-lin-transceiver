@@ -108,17 +108,19 @@ impl LinUdpClient {
         let pid = PID::from_id(id);
         let frame = Frame::from_data(pid, record.cache());
 
+        let d = std::time::SystemTime::now();
         let mut serial = self.serial.lock().await;
         serial.write_all(frame.get_data_with_checksum()).unwrap();
-        serial.flush().unwrap();
-        serial
-            .read_exact(&mut [frame.get_data_with_checksum().len() as u8])
-            .unwrap();
+        // serial.flush().unwrap();
+        // serial
+            // .read_exact(&mut [frame.get_data_with_checksum().len() as u8])
+            // .unwrap();
 
         println!(
-            "Respond to id={:02x}, with data={:?}",
+            "Respond to id={:02x}, with data={:?}, took {:?}",
             pid.get_id(),
-            frame.get_data_with_checksum()
+            frame.get_data_with_checksum(),
+            d.elapsed()
         );
 
         // Read echo from LIN-transceiver
