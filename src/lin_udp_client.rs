@@ -132,27 +132,26 @@ impl LinUdpClient {
             d.elapsed()
         );
 
-        // Read echo from LIN-transceiver
-        // let mut echo = vec![0x00u8; frame.get_data_with_checksum().len()];
-        // serial.read_exact(&mut echo).unwrap();
-
         self.config.increment_tx_over_lin().await;
+        Ok(())
     }
 
-    pub async fn write_header(&self, pid: PID) {
+    pub async fn write_header(&self, pid: PID) -> Result<(), Box<dyn Error>> {
         let mut serial = self.serial.lock().await;
 
-        serial.set_baud_rate(9600).unwrap();
-        serial.write_all(&[0x00]).unwrap();
-        serial.set_baud_rate(19_200).unwrap();
-        serial.write_all(&[0x55, pid.get()]).unwrap();
-        serial.flush().unwrap();
+        serial.set_baud_rate(9600)?;
+        serial.write_all(&[0x00])?;
+        serial.set_baud_rate(19_200)?;
+        serial.write_all(&[0x55, pid.get()])?;
+        serial.flush()?;
         let mut echo = [0; 3];
-        serial.read_exact(&mut echo).unwrap_or_default();
+        serial.read_exact(&mut echo)?;
 
         if echo != [0x00, 0x55, pid.get()] {
             println!("Couldn't read echo, read={:#?}", echo);
         }
+
+        Ok(())
     }
 
     /// Read a frame on the LIN-bus and send it over UDP if it was successful
