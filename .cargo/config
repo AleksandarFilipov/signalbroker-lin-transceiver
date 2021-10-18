@@ -2,4 +2,4 @@
 target = "armv7-unknown-linux-gnueabihf"
 
 [target.armv7-unknown-linux-gnueabihf]
-linker = "/home/nlind1/raspberry/tools/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/bin/arm-linux-gnueabihf-gcc"
+linker = "arm-linux-gnueabihf-gcc"
