@@ -1,10 +1,11 @@
 use byteorder::ReadBytesExt;
 use lin_bus::Frame;
-use lin_bus::{checksum, classic_checksum, PID};
+use lin_bus::PID;
 use serialport::SerialPort;
 use signalbroker_lin_transceiver_rp::NodeMode;
 use signalbroker_lin_transceiver_rp::BREAK;
 use signalbroker_lin_transceiver_rp::SYN_FILED;
+use std::error::Error;
 use std::io::{Read, Write};
 use std::{sync::Arc, time::Duration};
 use tokio::{net::UdpSocket, sync::Mutex};
