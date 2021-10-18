@@ -5,10 +5,11 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-readonly TARGET_HOST=pi@192.168.0.129
-readonly TARGET_PATH=/home/pi/lin-transceiver
-readonly SOURCE_PATH=./target/armv7-unknown-linux-gnueabihf/debug/lin-transceiver
+readonly PROJECT_NAME=signalbroker-lin-transceiver-rp
+readonly TARGET_HOST=pi@$1
+readonly TARGET_PATH=/home/pi/$PROJECT_NAME
+readonly SOURCE_PATH=./target/armv7-unknown-linux-gnueabihf/debug/$PROJECT_NAME
 
-cargo build
+cargo build 
 rsync ${SOURCE_PATH} ${TARGET_HOST}:${TARGET_PATH}
 ssh -t ${TARGET_HOST} ${TARGET_PATH}
