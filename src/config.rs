@@ -276,21 +276,15 @@ impl Config {
 
         println!("Request config {}", item);
 
-        self.udp_server_send_client
-            .lock()
-            .await
-            .as_ref()
-            .unwrap()
-            .send(&data)
-            .await
-            .unwrap();
+        if let Some(send_client) = &*self.udp_server_send_client.lock().await {
+            send_client.send(&data).await?;
+        }
+
+        Ok(())
     }
 
     async fn parse_server_message(&self) {
-        let device_hash;
-        {
-            device_hash = *self.hashes.device_hash.lock().await;
-        }
+        let device_hash = *self.hashes.device_hash.lock().await;
 
         let data = self.server_data.lock().await;
         let mut new_data = self.new_data.lock().await;
