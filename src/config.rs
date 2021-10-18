@@ -262,13 +262,9 @@ impl Config {
         Ok(())
     }
 
-    async fn request_config_item(&self, item: u8) {
+    async fn request_config_item(&self, item: u8) -> Result<(), Box<dyn Error>> {
         let mut data = Vec::with_capacity(10);
-
-        let device_hash;
-        {
-            device_hash = self.hashes.device_hash.lock().await.to_be_bytes();
-        }
+        let device_hash = self.hashes.device_hash.lock().await.to_be_bytes();
 
         data.push(HEADER);
         data.push(self.rib_id);
