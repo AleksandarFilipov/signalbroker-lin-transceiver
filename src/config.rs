@@ -147,27 +147,15 @@ impl Config {
         if time.duration_since(*latest_time)? > self.heart_beat_period {
             *latest_time = time;
 
-            let device_hash;
-            let rx_over_lin;
-            let tx_over_lin;
-            let rx_over_udp;
-            let tx_over_udp;
-            let sync_count;
-            let unsynched_packages;
-            let synched_packages;
-
-            // prevent deadlocks by only held it in this scope
-            {
-                device_hash = self.hashes.device_hash.lock().await.to_be_bytes();
-                let counters = self.counters.lock().await;
-                rx_over_lin = counters.rx_over_lin.to_be_bytes();
-                tx_over_lin = counters.tx_over_lin.to_be_bytes();
-                rx_over_udp = counters.rx_over_udp.to_be_bytes();
-                tx_over_udp = counters.tx_over_udp.to_be_bytes();
-                sync_count = counters.sync_count.to_be_bytes();
-                unsynched_packages = counters.unsynched_packages.to_be_bytes();
-                synched_packages = counters.synched_packages.to_be_bytes();
-            }
+            let device_hash = self.hashes.device_hash.lock().await.to_be_bytes();
+            let mut counters = self.counters.lock().await;
+            let rx_over_lin = counters.rx_over_lin.to_be_bytes();
+            let tx_over_lin = counters.tx_over_lin.to_be_bytes();
+            let rx_over_udp = counters.rx_over_udp.to_be_bytes();
+            let tx_over_udp = counters.tx_over_udp.to_be_bytes();
+            let sync_count = counters.sync_count.to_be_bytes();
+            let unsynched_packages = counters.unsynched_packages.to_be_bytes();
+            let synched_packages = counters.synched_packages.to_be_bytes();
 
             let mut data = Vec::with_capacity(30);
             data.push(HEADER); // HEADER
@@ -224,7 +212,7 @@ impl Config {
                 .await
                 .unwrap();
 
-            self.counters.lock().await.clear_counters();
+            counters.clear_counters();
         }
     }
 
