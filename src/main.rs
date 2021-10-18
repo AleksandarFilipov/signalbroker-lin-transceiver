@@ -1,3 +1,4 @@
+use std::time::Duration;
 use std::{collections::HashMap, error::Error, net::UdpSocket, sync::Arc};
 
 use config::Config;
@@ -7,13 +8,14 @@ use signalbroker_lin_transceiver_rp::{ServerMessageOffsets, UartConfig, HEADER};
 use std::fs::File;
 use std::io::prelude::*;
 use tokio::sync::Mutex;
+use tracing::debug;
 
 mod config;
 mod lin_udp_client;
 mod record;
 mod records;
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 16)]
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut file = File::open("lin_config.toml").expect("Unable to open the file");
     let mut contents = String::new();
@@ -31,21 +33,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let config = Arc::new(Config::new(port.rib_id, Arc::clone(&records)));
         config.init().await?;
 
+        tokio::time::sleep(Duration::from_millis(50)).await;
         configs.insert(port.rib_id, Arc::clone(&config));
 
         handles.push(tokio::spawn({
+            let lin_udp_client = LinUdpClient::new(Arc::clone(&config), records, &port.uart)?;
             let config = Arc::clone(&config);
-
+            let mut config_done = false;
             async move {
-                config.run().await;
-            }
-        }));
+                loop {
+                    config.run().await.unwrap();
 
-        handles.push(tokio::spawn({
-            let config = Arc::clone(&config);
-            let lin_udp_client = LinUdpClient::new(config, records, &port.uart);
-            async move {
-                lin_udp_client.run().await;
+                    if !config_done {
+                        if config.received_ip().await {
+                            lin_udp_client.init().await.unwrap();
+                            config_done = true;
+                            tokio::time::sleep(Duration::from_millis(1000)).await;
+                        }
+                    } else {
+                        lin_udp_client.run().await.unwrap();
+                    }
+                }
             }
         }));
     }
@@ -61,14 +69,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                 if HEADER != signal_broker_data[ServerMessageOffsets::Header as usize] {
                     println!("Didn't match expected");
+                    continue;
                 }
 
                 let id = signal_broker_data[ServerMessageOffsets::RibId as usize];
                 let config = configs.get(&id).unwrap();
                 config.set_server_data(&signal_broker_data).await;
                 config.set_server_ip_address(ip_server.ip()).await;
-
-                println!(
+                debug!(
                     "Recv {} bytes from {} with data {:#?}",
                     len,
                     ip_server,
