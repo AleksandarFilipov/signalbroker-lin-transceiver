@@ -214,7 +214,7 @@ impl Config {
         Ok(())
     }
 
-    async fn verify_config(&self) {
+    async fn verify_config(&self) -> Result<(), Box<dyn Error>> {
         let mut good_config = false;
 
         while !good_config {
@@ -239,26 +239,27 @@ impl Config {
 
             if host_port_hash != device_hash {
                 good_config = false;
-                self.request_config_item(HOST_PORT).await;
+                self.request_config_item(HOST_PORT).await?;
             } else if client_port_hash != device_hash {
                 good_config = false;
-                self.request_config_item(CLIENT_PORT).await;
+                self.request_config_item(CLIENT_PORT).await?;
             } else if node_mode_hash != device_hash {
                 good_config = false;
-                self.request_config_item(NODE_MODE).await;
+                self.request_config_item(NODE_MODE).await?;
             } else if message_sizes_hash != device_hash {
                 good_config = false;
-                self.request_config_item(MESSAGE_SIZES).await;
+                self.request_config_item(MESSAGE_SIZES).await?;
             } else if nad_hash != device_hash {
                 good_config = false;
-                self.request_config_item(NAD).await;
+                self.request_config_item(NAD).await?;
             }
 
             if !good_config {
-                sleep(Duration::from_millis(100)).await;
+                sleep(Duration::from_millis(50)).await;
                 self.parse_server_message().await;
             }
         }
+        Ok(())
     }
 
     async fn request_config_item(&self, item: u8) {
