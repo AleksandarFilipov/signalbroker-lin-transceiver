@@ -43,16 +43,20 @@ impl From<PacketBufferPos> for usize {
 }
 
 impl LinUdpClient {
-    pub fn new(config: Arc<Config>, records: Arc<Mutex<Records>>, path: &str) -> Self {
-        Self {
+    pub fn new(
+        config: Arc<Config>,
+        records: Arc<Mutex<Records>>,
+        path: &str,
+    ) -> Result<Self, Box<dyn Error>> {
+        Ok(Self {
             config,
             records,
             udp_client_sender: Arc::new(Mutex::new(None)),
             udp_client_listener: Arc::new(Mutex::new(None)),
             data: Arc::new(Mutex::new(Vec::default())),
             new_data: Arc::new(Mutex::new(false)),
-            serial: Arc::new(Mutex::new(serialport::new(path, 19_200).open().unwrap())),
-        }
+            serial: Arc::new(Mutex::new(serialport::new(path, 19_200).open()?)),
+        })
     }
 
     pub async fn run_master(&self) {
