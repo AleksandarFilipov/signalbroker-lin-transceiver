@@ -155,13 +155,16 @@ impl LinUdpClient {
     }
 
     /// Read a frame on the LIN-bus and send it over UDP if it was successful
-    pub async fn read_lin_and_send_udp(&self, pid: PID) {
+    pub async fn read_lin_and_send_udp(&self, pid: PID) -> Result<(), Box<dyn Error>> {
+        // read buffer  0  1  2        3        4       10
+        //              id payload1 payload2...         crc
+        // count        0        1        2
         let mut read_buffer = [0; 12];
         read_buffer[0] = pid.get();
 
         let mut serial = self.serial.lock().await;
 
-        serial.set_timeout(Duration::from_millis(15)).unwrap();
+        serial.set_timeout(Duration::from_millis(15))?;
 
         let record_list = self.records.lock().await;
         let record = record_list.find_by_id_im(pid.get_id());
@@ -169,9 +172,7 @@ impl LinUdpClient {
         if let Some(record) = record {
             let bytes_expected = record.size() as usize + 1;
 
-            let bytes_received = serial
-                .read(&mut read_buffer[1..=bytes_expected])
-                .unwrap_or_default();
+            let bytes_received = serial.read(&mut read_buffer[1..=bytes_expected])?;
 
             if bytes_received != bytes_expected {
                 warn!(
@@ -180,7 +181,8 @@ impl LinUdpClient {
                     bytes_expected,
                     bytes_received
                 );
-                return;
+                // TODO: return error
+                return Ok(());
             }
 
             let frame = Frame::from_data(pid, &read_buffer[1..bytes_expected]);
@@ -189,20 +191,25 @@ impl LinUdpClient {
 
             if frame.get_checksum() == read_buffer[bytes_expected] {
                 self.send_over_udp(frame.get_pid(), frame.get_data_with_checksum())
-                    .await;
+                    .await?;
             }
         }
 
-        serial.set_timeout(Duration::from_secs(1)).unwrap();
+        serial.set_timeout(Duration::from_secs(1))?;
+        Ok(())
     }
 
     /// Send a message with empty payload on UDP
-    async fn send_empty_over_udp(&self, pid: PID) {
-        self.send_over_udp(pid, &[]).await;
+    ///
+    /// We will do this every time we recieve an arbitration frame on the linbus.
+    /// And the broker will send us the latest data back
+    async fn send_empty_over_udp(&self, pid: PID) -> Result<(), Box<dyn Error>> {
+        self.send_over_udp(pid, &[]).await?;
+        Ok(())
     }
 
     /// Send a message with payload over UDP
-    async fn send_over_udp(&self, pid: PID, data: &[u8]) {
+    async fn send_over_udp(&self, pid: PID, data: &[u8]) -> Result<(), Box<dyn Error>> {
         let mut to_server = [0; 13];
         let max_udp_payload_length = 11;
         let length = match data.len() {
@@ -215,7 +222,8 @@ impl LinUdpClient {
                 "Payload length={} is greater then max={}",
                 length, max_udp_payload_length
             );
-            return;
+            // TODO: return error
+            return Ok(());
         }
 
         to_server[PacketBufferPos::Id as usize] = pid.get_id();
@@ -224,42 +232,38 @@ impl LinUdpClient {
             // This crash with LIN20
             to_server[PacketBufferPos::Payload as usize
                 ..=(PacketBufferPos::Payload as usize + length as usize)]
-                .copy_from_slice(data);
+                .clone_from_slice(data);
         }
 
         let payload_length = length as usize + 5;
 
         debug!("Sending to server {:#?}", &to_server[..payload_length]);
-        self.udp_client_sender
-            .lock()
-            .await
-            .as_ref()
-            .unwrap()
-            .send(&to_server[..payload_length])
-            .await
-            .unwrap();
+        if let Some(client) = &*self.udp_client_sender.lock().await {
+            client.send(&to_server[..payload_length]).await?;
+        }
+
         self.config.increment_tx_over_udp().await;
+        Ok(())
     }
 
     /// Find start position of LIN-Header
     ///
     /// LIN-header looks like this:
     ///
-    /// BREAK(0x00) SYN_FIELD(0x55) ID(0xXX)
+    /// BREAK(0x00) SYN_FIELD(0x55) PID(0xXX)
     ///
     /// Read bytes until conditions are met, return the ID.
-    pub async fn synch_header(&self) -> u8 {
-        let mut serial_buf: Vec<u8> = vec![0; 3];
+    pub async fn synch_header(&self) -> Result<u8, Box<dyn Error>> {
+        let mut serial_buf = [0; 3];
         let mut serial = self.serial.lock().await;
-
-        serial.read_exact(&mut serial_buf).unwrap_or_default();
+        serial.read_exact(&mut serial_buf)?;
 
         let mut synch_tries = 0;
 
         while !(serial_buf[0] == BREAK && serial_buf[1] == SYN_FILED) {
             serial_buf[0] = serial_buf[1];
             serial_buf[1] = serial_buf[2];
-            serial_buf[2] = serial.read_u8().unwrap_or(0x00);
+            serial_buf[2] = serial.read_u8()?;
             synch_tries = (synch_tries + 1) % std::u16::MAX;
         }
 
@@ -270,7 +274,7 @@ impl LinUdpClient {
             self.config.set_synch_count(synch_tries).await;
         }
 
-        serial_buf[2]
+        Ok(serial_buf[2])
     }
 
     pub async fn cache_udp_message(&self, _record_id: u8) {
@@ -301,8 +305,8 @@ impl LinUdpClient {
         }
     }
 
-    pub async fn run_slave(&self) {
-        let pid = self.synch_header().await;
+    pub async fn run_slave(&self) -> Result<(), Box<dyn Error>> {
+        let pid = self.synch_header().await?;
         let id = pid & 0b0011_1111;
 
         if PID::from_id(id).get() == pid {
@@ -316,45 +320,44 @@ impl LinUdpClient {
                 let pid = PID::from_id(id);
 
                 if record.is_master() || !record.cache_valid() {
-                    self.send_empty_over_udp(pid).await;
-                    self.read_lin_and_send_udp(pid).await;
+                    self.send_empty_over_udp(pid).await?;
+                    self.read_lin_and_send_udp(pid).await?;
                 } else {
-                    self.send_over_serial(&record).await;
-                    self.send_empty_over_udp(pid).await;
+                    self.send_over_serial(&record).await?;
+                    self.send_empty_over_udp(pid).await?;
                 }
                 self.cache_udp_message(record.id()).await;
             }
         } else {
             warn!("Parity failure {} {}", pid, PID::from_id(id).get());
         }
+
+        Ok(())
     }
 
-    pub async fn run(&self) {
+    pub async fn init(&self) -> Result<(), Box<dyn Error>> {
         while !self.config.received_ip().await {
             println!("Waiting for server ip...");
             tokio::time::sleep(Duration::from_millis(3000)).await;
         }
 
-        {
-            let udp_socket_ip = self.config.host_ip().await;
-            let udp_socket_port = self.config.host_port().await;
-            let udp_client_sender_address = format!("{}:{}", udp_socket_ip, udp_socket_port);
-            info!("client_sender_address: {}", udp_client_sender_address);
-            let mut udp_sender = self.udp_client_sender.lock().await;
-            *udp_sender = Some(UdpSocket::bind("0.0.0.0:0").await.unwrap());
-            udp_sender
-                .as_ref()
-                .unwrap()
-                .connect(&udp_client_sender_address)
-                .await
-                .unwrap();
+        let udp_socket_ip = self.config.host_ip().await;
+        let udp_socket_port = self.config.host_port().await;
+        let udp_client_sender_address = format!("{}:{}", udp_socket_ip, udp_socket_port);
+        info!("client_sender_address: {}", udp_client_sender_address);
+
+        *self.udp_client_sender.lock().await = Some(UdpSocket::bind("0.0.0.0:0").await?);
+
+        if let Some(udp_sender) = &*self.udp_client_sender.lock().await {
+            udp_sender.connect(&udp_client_sender_address).await?;
         }
 
         let udp_socket_client_port = self.config.client_port().await;
         let udp_client_listener_address = format!("0.0.0.0:{}", udp_socket_client_port);
         info!("client_listener_address: {}", udp_client_listener_address);
         *self.udp_client_listener.lock().await =
-            Some(UdpSocket::bind(&udp_client_listener_address).await.unwrap());
+            Some(UdpSocket::bind(&udp_client_listener_address).await?);
+
         tokio::spawn({
             let client = self.udp_client_listener.clone();
             let new_data = self.new_data.clone();
@@ -363,38 +366,34 @@ impl LinUdpClient {
             async move {
                 loop {
                     let mut buf = vec![0; 128];
-                    let len = client
-                        .lock()
-                        .await
-                        .as_ref()
-                        .unwrap()
-                        .recv(&mut buf)
-                        .await
-                        .unwrap();
-                    *data.lock().await = buf[..len as usize].to_owned();
-                    *new_data.lock().await = true;
+                    if let Some(client) = &*client.lock().await {
+                        let len = client.recv(&mut buf).await.unwrap();
+                        *data.lock().await = buf[..len as usize].to_owned();
+                        *new_data.lock().await = true;
+                        debug!(
+                            "Received {} bytes with data {:#?}",
+                            len,
+                            &buf[..len as usize]
+                        );
+                    }
                     config.increment_rx_over_udp().await;
-                    debug!(
-                        "Received {} bytes with data {:#?}",
-                        len,
-                        &buf[..len as usize]
-                    );
                 }
             }
         });
 
-        // self.serial.lock().await.flush().unwrap();
+        Ok(())
+    }
 
-        loop {
-            match self.config.node_mode().await {
-                NodeMode::Slave => {
-                    self.run_slave().await;
-                }
-                NodeMode::Master => {
-                    self.run_master().await;
-                }
-                NodeMode::Undefined => {}
+    pub async fn run(&self) -> Result<(), Box<dyn Error>> {
+        match self.config.node_mode().await {
+            NodeMode::Slave => {
+                self.run_slave().await?;
             }
+            NodeMode::Master => {
+                self.run_master().await?;
+            }
+            NodeMode::Undefined => {}
         }
+        Ok(())
     }
 }
