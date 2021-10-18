@@ -294,14 +294,6 @@ impl Config {
         }
 
         *new_data = false;
-
-        // if the first bytes isn't the HEADER identifier or if the message isn't intended for this ID
-        // if HEADER != data[ServerMessageOffsets::Header as usize]
-        //     || self.rib_id != data[ServerMessageOffsets::RibId as usize]
-        // {
-        //     println!("Didn't match expected");
-        // }
-
         *self.hashes.device_hash.lock().await = BigEndian::read_u16(
             &data[(ServerMessageOffsets::HashHigh as usize)
                 ..=(ServerMessageOffsets::HashLow as usize)],
