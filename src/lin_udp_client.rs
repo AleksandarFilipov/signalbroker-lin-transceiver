@@ -93,38 +93,40 @@ impl LinUdpClient {
             if data.len() == minimum_data_length {
                 if !record.is_master() {
                     // Send arbitration message (only the header)
-                    self.write_header(pid).await;
+                    self.write_header(pid).await?;
                     // Wait until slave respond and consume the result
-                    self.read_lin_and_send_udp(pid).await;
+                    self.read_lin_and_send_udp(pid).await?;
                 }
             } else {
-                self.write_header(pid).await;
+                self.write_header(pid).await?;
                 let mut records = self.records.lock().await;
-                let record = records.find_by_id(pid.get_id()).unwrap();
-                record.set_write_cache(
-                    &data[PacketBufferPos::Payload.into()
-                        ..(PacketBufferPos::Payload as usize + record.size() as usize)],
-                );
-                self.send_over_serial(record).await;
+
+                if let Some(record) = records.find_by_id(pid.get_id()) {
+                    record.set_write_cache(
+                        &data[PacketBufferPos::Payload.into()
+                            ..(PacketBufferPos::Payload as usize + record.size() as usize)],
+                    );
+                    self.send_over_serial(record).await?;
+                }
             }
         };
+        Ok(())
     }
 
-    pub async fn send_over_serial(&self, record: &Record) {
+    pub async fn send_over_serial(&self, record: &Record) -> Result<(), Box<dyn Error>> {
         let id = record.id();
         let pid = PID::from_id(id);
         let frame = Frame::from_data(pid, record.cache());
 
         let d = std::time::SystemTime::now();
         let mut serial = self.serial.lock().await;
-        serial.write_all(frame.get_data_with_checksum()).unwrap();
-        // serial.flush().unwrap();
+        serial.write_all(frame.get_data_with_checksum())?;
         // serial
-            // .read_exact(&mut [frame.get_data_with_checksum().len() as u8])
-            // .unwrap();
+        // .read_exact(&mut [frame.get_data_with_checksum().len() as u8])
+        // .unwrap();
 
         println!(
-            "Respond to id={:02x}, with data={:?}, took {:?}",
+            "Respond to id={:#04x}, with data={:02?}, took {:?}",
             pid.get_id(),
             frame.get_data_with_checksum(),
             d.elapsed()
