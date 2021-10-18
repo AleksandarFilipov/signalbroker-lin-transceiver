@@ -1,5 +1,6 @@
 use crate::record::Record;
 
+/// Helds a collection of [`Record`]
 pub struct Records {
     record_list: Vec<Record>,
 }
