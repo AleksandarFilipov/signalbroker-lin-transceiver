@@ -203,17 +203,14 @@ impl Config {
             data.push(unsynched_packages[0]);
             data.push(synched_packages[1]);
 
-            self.udp_server_send_client
-                .lock()
-                .await
-                .as_ref()
-                .unwrap()
-                .send(&data)
-                .await
-                .unwrap();
+            if let Some(udp_sender) = &*self.udp_server_send_client.lock().await {
+                let len = udp_sender.send(&data).await?;
+                debug!("Wrote {} bytes as heartbeat", len);
+            }
 
             counters.clear_counters();
         }
+        Ok(())
     }
 
     async fn verify_config(&self) {
