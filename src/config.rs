@@ -59,6 +59,20 @@ impl Config {
     pub async fn init(&self) -> Result<(), Box<dyn Error>> {
         *self.udp_server_send_client.lock().await = Some(UdpSocket::bind("0.0.0.0:0").await?);
 
+        let udp_server_send_client_port = self.udp_ports.lock().await.udp_server_config_port;
+        let udp_server_send_client_address = *self.ip_address_server.lock().await;
+        let address = format!(
+            "{}:{}",
+            udp_server_send_client_address, udp_server_send_client_port
+        );
+
+        // Add permission to broadcast to entire network and connect
+        if let Some(udp_server_send) = &*self.udp_server_send_client.lock().await {
+            udp_server_send.set_broadcast(true)?;
+            udp_server_send.connect(&address).await?;
+        }
+
+        println!("Init completed");
         Ok(())
     }
 
@@ -120,36 +134,11 @@ impl Config {
         *self.received_ip.lock().await = true;
     }
 
-    pub async fn run(&self) {
-        let udp_server_send_client_port = self.udp_ports.lock().await.udp_server_config_port;
-        let udp_server_send_client_address = *self.ip_address_server.lock().await;
-        let address = format!(
-            "{}:{}",
-            udp_server_send_client_address, udp_server_send_client_port
-        );
-        // Add permission to broadcast to entire network
-        self.udp_server_send_client
-            .lock()
-            .await
-            .as_ref()
-            .unwrap()
-            .set_broadcast(true)
-            .unwrap();
-
-        self.udp_server_send_client
-            .lock()
-            .await
-            .as_ref()
-            .unwrap()
-            .connect(&address)
-            .await
-            .unwrap();
-
-        loop {
-            self.send_heartbeat().await;
-            self.parse_server_message().await;
-            self.verify_config().await;
-        }
+    pub async fn run(&self) -> Result<(), Box<dyn Error>> {
+        self.send_heartbeat().await?;
+        self.parse_server_message().await;
+        self.verify_config().await?;
+        Ok(())
     }
 
     async fn send_heartbeat(&self) -> Result<(), Box<dyn Error>> {
