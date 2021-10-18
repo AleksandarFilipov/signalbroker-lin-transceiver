@@ -59,11 +59,12 @@ impl LinUdpClient {
         })
     }
 
-    pub async fn run_master(&self) {
+    pub async fn run_master(&self) -> Result<(), Box<dyn Error>> {
         let data = self.data.lock().await;
         let mut new_data = self.new_data.lock().await;
         if !*new_data || data.len() < 5 {
-            return;
+            // TODO: return error
+            return Ok(());
         }
 
         *new_data = false;
@@ -83,7 +84,8 @@ impl LinUdpClient {
 
             if !valid_payload {
                 println!("Payload not valid");
-                return;
+                // TODO: return error
+                return Ok(());
             }
 
             // If the packet length is equal to 5 and the record isn't a master
