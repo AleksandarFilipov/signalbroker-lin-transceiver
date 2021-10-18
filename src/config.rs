@@ -10,6 +10,7 @@ use signalbroker_lin_transceiver_rp::{
     HEADER, HEART_BEAT, HOST_PORT, MESSAGE_SIZES, NAD, NODE_MODE,
 };
 use tokio::{net::UdpSocket, sync::Mutex, time::sleep};
+use tracing::debug;
 
 use crate::record::Record;
 use crate::records::Records;
