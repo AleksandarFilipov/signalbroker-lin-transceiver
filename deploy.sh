@@ -10,6 +10,6 @@ readonly TARGET_HOST=pi@$1
 readonly TARGET_PATH=/home/pi/$PROJECT_NAME
 readonly SOURCE_PATH=./target/armv7-unknown-linux-gnueabihf/release/$PROJECT_NAME
 
-cargo build --release
+cargo build --release --target="armv7-unknown-linux-gnueabihf"
 rsync ${SOURCE_PATH} ${TARGET_HOST}:${TARGET_PATH}
 ssh -t ${TARGET_HOST} ${TARGET_PATH}
