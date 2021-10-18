@@ -17,13 +17,11 @@ use std::error::Error;
 use std::ops::Sub;
 use std::time::SystemTime;
 
-// pub const LOGGER: u8 = 0x60;
-
 pub struct Config {
     rib_id: u8,
     udp_ports: Arc<Mutex<UdpPort>>,
     udp_server_send_client: Arc<Mutex<Option<UdpSocket>>>,
-    heart_beat_period: u64,
+    heart_beat_period: Duration,
     ip_address_server: Arc<Mutex<IpAddr>>,
     hashes: ConfigHash,
     server_data: Arc<Mutex<Vec<u8>>>,
@@ -42,7 +40,7 @@ impl Config {
             rib_id,
             udp_ports: Arc::new(Mutex::new(UdpPort::new())),
             udp_server_send_client: Arc::new(Mutex::new(None)),
-            heart_beat_period: 2500,
+            heart_beat_period: Duration::from_millis(2000),
             ip_address_server: Arc::new(Mutex::new(IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)))),
             hashes: ConfigHash::new(),
             server_data: Arc::new(Mutex::new(vec![0u8; 128])),
@@ -154,12 +152,10 @@ impl Config {
         }
     }
 
-    async fn send_heartbeat(&self) {
+    async fn send_heartbeat(&self) -> Result<(), Box<dyn Error>> {
         let time = std::time::SystemTime::now();
         let mut latest_time = self.latest_updated_time.lock().await;
-        if time.duration_since(*latest_time).unwrap()
-            > Duration::from_millis(self.heart_beat_period)
-        {
+        if time.duration_since(*latest_time)? > self.heart_beat_period {
             *latest_time = time;
 
             let device_hash;
