@@ -35,17 +35,21 @@ void Lin::serialBreak() {
     constexpr auto brakeEnd =
         (1000000UL / static_cast<unsigned long>(serialSpd));
     constexpr auto brakeBegin = brakeEnd * LIN_BREAK_DURATION;
+    // GPIO_NUM_4 is the same pin as m_TxPin
 
     m_Serial.flush();
+    // removing this delay results in a master approx 20 min after boot.
+    delay(1);
     m_Serial.end();
+    // gpio_reset_pin((gpio_num_t)m_TxPin);
     gpio_matrix_out(m_TxPin, SIG_GPIO_OUT_IDX, false, false);
-    gpio_set_direction(GPIO_NUM_4, GPIO_MODE_OUTPUT);
-    gpio_set_level(GPIO_NUM_4, 0);  // Send BREAK
+    gpio_set_direction((gpio_num_t)m_TxPin, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)m_TxPin, 0); // Send BREAK
 
     // delayMicroseconds unreliable above 16383 see Arduino man pages
     delayMicroseconds(brakeBegin);
-    m_Serial.flush();
-    gpio_set_level(GPIO_NUM_4, 1);
+    // m_Serial.flush();
+    gpio_set_level((gpio_num_t)m_TxPin, 1);
     delayMicroseconds(brakeEnd);
 
     m_Serial.begin(serialSpd);
