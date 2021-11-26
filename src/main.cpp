@@ -32,7 +32,7 @@
 #include "EthernetClient.hpp"
 #include "LinUdpGateway.hpp"
 
-constexpr uint8_t rib_id = 7;
+constexpr uint8_t rib_id = 8;
 
 EthernetClient ethClient{};
 Records records{};

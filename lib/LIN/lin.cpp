@@ -30,26 +30,47 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 void Lin::begin() { m_Serial.begin(serialSpd); }
 
-void Lin::serialBreak() {
-    constexpr auto LIN_BREAK_DURATION = 13;
-    constexpr auto brakeEnd =
-        (1000000UL / static_cast<unsigned long>(serialSpd));
-    constexpr auto brakeBegin = brakeEnd * LIN_BREAK_DURATION;
+void Lin::serialBreak()
+{
+    constexpr auto LIN_BREAK_DURATION = 15;
 
     m_Serial.flush();
+    delay(1);
     m_Serial.end();
+    gpio_reset_pin(GPIO_NUM_4);
     gpio_matrix_out(m_TxPin, SIG_GPIO_OUT_IDX, false, false);
-    gpio_set_direction(GPIO_NUM_4, GPIO_MODE_OUTPUT);
-    gpio_set_level(GPIO_NUM_4, 0);  // Send BREAK
+
+    digitalWrite(m_TxPin, LOW); // Send BREAK
+
+    constexpr auto brakeEnd = (1000000UL / static_cast<unsigned long>(serialSpd));
+    constexpr auto brakeBegin = brakeEnd * LIN_BREAK_DURATION;
 
     // delayMicroseconds unreliable above 16383 see Arduino man pages
     delayMicroseconds(brakeBegin);
-    m_Serial.flush();
-    gpio_set_level(GPIO_NUM_4, 1);
-    delayMicroseconds(brakeEnd);
-
+    digitalWrite(m_TxPin, HIGH); // BREAK delimiter
     m_Serial.begin(serialSpd);
 }
+
+// void Lin::serialBreak() {
+//     constexpr auto LIN_BREAK_DURATION = 13;
+//     constexpr auto brakeEnd =
+//         (1000000UL / static_cast<unsigned long>(serialSpd));
+//     constexpr auto brakeBegin = brakeEnd * LIN_BREAK_DURATION;
+
+//     m_Serial.flush();
+//     m_Serial.end();
+//     gpio_matrix_out(m_TxPin, SIG_GPIO_OUT_IDX, false, false);
+//     gpio_set_direction(GPIO_NUM_4, GPIO_MODE_OUTPUT);
+//     gpio_set_level(GPIO_NUM_4, 0);  // Send BREAK
+
+//     // delayMicroseconds unreliable above 16383 see Arduino man pages
+//     delayMicroseconds(brakeBegin);
+//     // m_Serial.flush();
+//     gpio_set_level(GPIO_NUM_4, 1);
+//     delayMicroseconds(brakeEnd);
+
+//     m_Serial.begin(serialSpd);
+// }
 
 /**
  * @brief Calculate checksum on LIN data
