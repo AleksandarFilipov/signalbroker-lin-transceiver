@@ -1,17 +1,17 @@
 # LIN
 
-How to setup the LIN transceiver
+How to set up the LIN transceiver
 
 ## Installation 
 
-What you need to install to be enabled to upload the project to device.
-
 ### Prerequisites
-Download USB-drivers for the ESP-device, choose driver depending on OS here:
+
+
+Download USB drivers for the ESP device, choose driver depending on OS here:
 https://www.olimex.com/Products/IoT/ESP32/ESP32-POE/open-source-hardware 
 
-To be enabled to upload this project to your device you need PlatformIO. 
-You can either install it as a [CLI application](https://docs.platformio.org/en/latest/core/index.html#) but the prefferd way is to use their extension within an [IDE](https://docs.platformio.org/en/latest/integration/ide/pioide.html#).
+To be able to upload this project to your device you need PlatformIO. 
+You can either install it as a [CLI application](https://docs.platformio.org/en/latest/core/index.html#) but the preferred way is to use their extension within an [IDE](https://docs.platformio.org/en/latest/integration/ide/pioide.html#).
 
 I guess that the most popular is to use VS Code so I will use it in the example below.
 
@@ -48,32 +48,32 @@ ethClient.connect(&config, false, IPAddress(192, 168, 1, 20), IPAddress(192, 168
 
 So what does this mean? 
 
-The false flag indicates that dhcp is disabled. 
+The false flag indicates that DHCP is disabled. 
 
 The first IPAddress is the ESP32 address.
 
-The second IPAdress is the host address (where beamybroker is running)
+The second IPAdress is the host address (where the beamy broker is running)
 
-The third IPAdress is subnet address.
+The third IPAdress is a subnet address.
 
 Now you are ready to upload this to your device!!
 
-### Modify the interface.json on the server side
+### Modify the interface.json on the server-side
 
-When you have uploaded the firmware to your ESP32-devices and assinged them with unique rib ID's. You need to configure the interfaces.json file on signalbroker-server side in the following way:
+When you have uploaded the firmware to your ESP32-devices and assigned them with unique rib IDs. You need to configure the interfaces.json file on the beamy broker-server side in the following way:
 
-* namespace - Unique namespace name (you will access all neccessery data from gRPC api with namespace name)
+* namespace - Unique namespace name (you will access all necessary data from gRPC API with namespace name)
 * device_identifier - rib ID that you assigned to the device
-* target_host - null if using dhcp, otherwise type in ip address of esp32.
-* server/targetport - needs to be unique port for each device
+* target_host - null if using dhcp, otherwise type in IP address of esp32.
+* server/target port - needs to be a unique port for each device
 * node_mode: master/slave depending on how the device is connected to the LIN bus
 * ldf_file - paste the link to where you have the LDF file
 * schedule_file - same as ldf_file (like 99% of the times)
-* schedule_table_name - which scheduler you want to use when you are running the device as master
+* schedule_table_name - type in which scheduler you want to use when you are running the device as the master
 * schedule_autostart - if you are running as master and you want the provided schedule_table to autostart, this value should be true otherwise false
 
 ## Slave
-If you are intended to run as slave, your interface file should look like this (but with your settings and .ldf files). 
+If you are intended to run as a slave, your interface file should look like this (but with your settings and .ldf files). 
 
 #### **Remember to set the right rib_id**
 
@@ -112,7 +112,7 @@ If you are intended to run as slave, your interface file should look like this (
 
 ## Master
 
-If you are intended to run as master, your interface file should look like this.
+If you are intended to run as a master, your interface file should look like this.
 
 ### DHCP
 
