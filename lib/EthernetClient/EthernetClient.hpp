@@ -15,7 +15,7 @@ public:
      * @brief Construct an EthernetClient object
      */
     constexpr EthernetClient()
-        : m_ethConnected{false} {};
+        : m_ethConnected{true} {};
 
     /**
     * @brief Connect to Ethernet
@@ -25,7 +25,7 @@ public:
     * @param subnetAddress - The subnet address
     */
     void connect(Config *config,
-                 bool useDHCP = false,
+                 bool useDHCP = true,
                  const IPAddress &deviceAddress = IPAddress(0, 0, 0, 0),
                  const IPAddress &hostAddress = IPAddress(0, 0, 0, 0),
                  const IPAddress &subnetAddress = IPAddress(0, 0, 0, 0))
@@ -73,8 +73,8 @@ public:
 
         ETH.begin();
 
-        // If DHCP is enabled we need to call the config function and pass our IPAddress in here
-        if (useDHCP)
+        // If DHCP is disable, we need to configure the IP Addresses our self before we continue
+        if (!useDHCP)
         {
             ETH.config(deviceAddress, hostAddress, subnetAddress);
         }
