@@ -142,7 +142,7 @@ If you are intended to run as a master, your interface file should look like thi
       "config": {
         "device_identifier": 1,
         "server_port": 2014,
-        "target_host": 192.168.1.20,
+        "target_host": "192.168.1.20",
         "target_port": 2013
       },
       "node_mode": "master",
