@@ -32,7 +32,6 @@
 #include "EthernetClient.hpp"
 #include "LinUdpGateway.hpp"
 
-constexpr uint8_t rib_id = 7;
 constexpr uint8_t ledPin = 13; //pin controlling yellow LED
 constexpr uint8_t masterPin = 5; //pin setting lin transceiver master or slave. High=master, low=slave
 constexpr uint8_t adressPin1 = 32;
@@ -63,14 +62,12 @@ void setup()
     pinMode(adressPin3, INPUT_PULLUP);
     pinMode(adressPin4, INPUT_PULLUP);
 
-    digitalWrite(masterPin, LOW); //setting lin transceiver to slave
-    //digitalWrite(masterPin, HIGH); //setting lin transceiver to master
-
     digitalWrite(ledPin, HIGH); //turning yellow LED on
 
+    //Calculating adress and printing. Adress is determined by 4 inverted bits.
     uint8_t rib_id = !digitalRead(adressPin1) + (!digitalRead(adressPin2) << 1) +  (!digitalRead(adressPin3) << 2) +  (!digitalRead(adressPin4) << 3);
     // uint8_t rib = 2;
-    config = new Config {rib_id, records};
+    config = new Config {rib_id, records, masterPin};
     linUdpGateway = new LinUdpGateway{Serial1, *config, records};
 
     ethClient.connect(config);
