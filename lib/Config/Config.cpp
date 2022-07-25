@@ -7,8 +7,9 @@
  * @param ribID Your device ribID
  * @param records A storage of records, so you can add records that's received from config
  */
-Config::Config(uint8_t ribID, Records &records)
+Config::Config(uint8_t ribID, Records &records, uint8_t masterPin)
     : m_nad{},
+      m_masterPin{masterPin},
       m_nadHash{},
       m_ribID(ribID),
       m_hostPort{},
@@ -65,6 +66,33 @@ void Config::run()
     sendHeartbeat();
     parseServerMessage();
     verifyConfig();
+}
+
+/**
+ * @brief Set node mode (master or slave)
+ * */
+void Config::setNodeMode()
+{
+    std::array<char, 100> message{};
+    switch (m_nodeMode) {
+        case Config::NodeModes::MASTER:
+            sprintf(message.data(),
+                    "Node running as master, setting pin %d HIGH", m_masterPin);
+            log(message.data());
+            digitalWrite(m_masterPin, HIGH); //setting lin transceiver to master
+            break;
+        case Config::NodeModes::SLAVE:
+            sprintf(message.data(),
+                    "Node running as slave, setting pin %d LOW", m_masterPin);
+            log(message.data());
+            digitalWrite(m_masterPin, LOW); //setting lin transceiver to slave
+            break;
+        default:
+            log(
+                "Configuration incorrect master/slave mode missing");
+            delay(500);
+            break;
+    }
 }
 
 /**
@@ -303,6 +331,7 @@ void Config::parseServerMessage()
             return;
         }
         m_nodeMode = static_cast<NodeModes>(m_packetBuffer.at(value(Offsets::PAYLOAD_START_OFFSET)));
+        setNodeMode();
         m_nodeModeHash = m_lastHash;
         break;
     case NAD:
