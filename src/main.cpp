@@ -33,34 +33,65 @@
 #include "LinUdpGateway.hpp"
 
 constexpr uint8_t rib_id = 7;
+constexpr uint8_t ledPin = 13; //pin controlling yellow LED
+constexpr uint8_t masterPin = 5; //pin setting lin transceiver master or slave. High=master, low=slave
+constexpr uint8_t adressPin1 = 32;
+constexpr uint8_t adressPin2 = 16;
+constexpr uint8_t adressPin3 = 15;
+constexpr uint8_t adressPin4 = 14;
 
 EthernetClient ethClient{};
 Records records{};
-Config config{rib_id, records};
-LinUdpGateway linUdpGateway{Serial1, config, records};
+Config *config;
+// LinUdpGateway linUdpGateway{Serial1, config, records};
+LinUdpGateway *linUdpGateway;
 
 void setup()
 {
     Serial.begin(115200);
     Serial1.begin(19200);
-    ethClient.connect(&config);
+
+    pinMode(ledPin, OUTPUT);
+    pinMode(masterPin, OUTPUT);
+    pinMode(adressPin1, INPUT);
+    pinMode(adressPin2, INPUT);
+    pinMode(adressPin3, INPUT);
+    pinMode(adressPin4, INPUT);
+
+    pinMode(adressPin1, INPUT_PULLUP);
+    pinMode(adressPin2, INPUT_PULLUP);
+    pinMode(adressPin3, INPUT_PULLUP);
+    pinMode(adressPin4, INPUT_PULLUP);
+
+    digitalWrite(masterPin, LOW); //setting lin transceiver to slave
+    //digitalWrite(masterPin, HIGH); //setting lin transceiver to master
+
+    digitalWrite(ledPin, HIGH); //turning yellow LED on
+
+    uint8_t rib_id = !digitalRead(adressPin1) + (!digitalRead(adressPin2) << 1) +  (!digitalRead(adressPin3) << 2) +  (!digitalRead(adressPin4) << 3);
+    // uint8_t rib = 2;
+    config = new Config {rib_id, records};
+    linUdpGateway = new LinUdpGateway{Serial1, *config, records};
+
+    ethClient.connect(config);
 
     // Init configuration
-    config.init();
+    config->init();
 }
 
 void loop()
 {
     // Get configuration from server and send heartbeat
-    config.run();
+    // Serial.println(rib_id);
+    config->run();
 
-    if (!linUdpGateway.connected())
+    if (!linUdpGateway->connected())
     {
-        if (config.getLockIpAddress())
-            linUdpGateway.init();
+        if (config->getLockIpAddress())
+            linUdpGateway->init();
     }
     else
     {
-        linUdpGateway.run();
+        linUdpGateway->run();
     }
 }
