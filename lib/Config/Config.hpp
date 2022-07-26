@@ -20,7 +20,7 @@ class Config
     };
 
 public:
-    explicit Config(uint8_t ribID, Records &records, uint8_t masterPin);
+    explicit Config(uint8_t ribID, Records &records, uint8_t masterPin, uint8_t trafficPin);
 
     /**
     * "MASTER means that you need to reply to all ids, all except the master ids. For master id the data should be sent back.
@@ -91,6 +91,8 @@ public:
 
     uint8_t ribID() const { return m_ribID; }
 
+    uint8_t trafficPin() const { return m_trafficPin; }
+
     uint16_t hostPort() const { return m_hostPort; }
 
     uint16_t clientPort() const { return m_clientPort; }
@@ -127,6 +129,7 @@ private:
 
     uint8_t m_nad = 0;          // This is intended for filtering diagnostic request. To selectively only answer with on lin client.
     uint8_t m_masterPin;
+    uint8_t m_trafficPin;
     DoubleByte m_nadHash;
 
     uint8_t m_ribID;            // This is calculated locally and part of the message header

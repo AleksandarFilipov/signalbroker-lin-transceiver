@@ -7,9 +7,10 @@
  * @param ribID Your device ribID
  * @param records A storage of records, so you can add records that's received from config
  */
-Config::Config(uint8_t ribID, Records &records, uint8_t masterPin)
+Config::Config(uint8_t ribID, Records &records, uint8_t masterPin, uint8_t trafficPin)
     : m_nad{},
       m_masterPin{masterPin},
+      m_trafficPin{trafficPin},
       m_nadHash{},
       m_ribID(ribID),
       m_hostPort{},

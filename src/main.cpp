@@ -62,12 +62,12 @@ void setup()
     pinMode(adressPin3, INPUT_PULLUP);
     pinMode(adressPin4, INPUT_PULLUP);
 
-    digitalWrite(ledPin, HIGH); //turning yellow LED on
+    //digitalWrite(ledPin, HIGH); //turning yellow LED on
 
     //Calculating adress and printing. Adress is determined by 4 inverted bits.
     uint8_t rib_id = !digitalRead(adressPin1) + (!digitalRead(adressPin2) << 1) +  (!digitalRead(adressPin3) << 2) +  (!digitalRead(adressPin4) << 3);
     // uint8_t rib = 2;
-    config = new Config {rib_id, records, masterPin};
+    config = new Config {rib_id, records, masterPin, ledPin};
     linUdpGateway = new LinUdpGateway{Serial1, *config, records};
 
     ethClient.connect(config);
@@ -78,8 +78,9 @@ void setup()
 
 void loop()
 {
+    // Will be activated once traffic is present
+    digitalWrite(config->trafficPin(), LOW); //turning yellow LED off
     // Get configuration from server and send heartbeat
-    // Serial.println(rib_id);
     config->run();
 
     if (!linUdpGateway->connected())
