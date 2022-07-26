@@ -102,6 +102,8 @@ uint8_t LinUdpGateway::synchHeader() {
 
         match = (frameBreak == BREAK) && (frameSynch == SYN_FIELD);
     }
+    digitalWrite(m_config->trafficPin(), HIGH); //turning yellow LED on
+    // will be deactivated in mail loop
 
     m_config->incrementSynchedPackages();
 
@@ -349,6 +351,9 @@ void LinUdpGateway::runMaster() {
     // Check if payload is valid
     // It's valid when the packet buffer length is equal to 5 (arbitration
     // frame) or 5 + LIN frame size (master frame)
+    digitalWrite(m_config->trafficPin(), HIGH); //turning yellow LED on
+    // will be deactivated in main loop
+
     bool validPayload =
         ((m_packetBufferLength == minPacketBufferLength) ||
          (m_packetBufferLength == (minPacketBufferLength + record->size())));
