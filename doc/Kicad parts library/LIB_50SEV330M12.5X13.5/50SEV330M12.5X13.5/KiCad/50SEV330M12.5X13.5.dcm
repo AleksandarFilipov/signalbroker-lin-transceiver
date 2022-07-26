@@ -1,0 +1,9 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP 50SEV330M12.5X13.5
+D CAP ALUM 330UF 20% 50V SMD
+K
+F https://www.rubycon.co.jp/wp-content/uploads/catalog-aluminum/SEV.pdf
+$ENDCMP
+#
+#End Doc Library

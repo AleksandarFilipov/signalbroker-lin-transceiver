@@ -4,7 +4,7 @@
 
 namespace
 {
-    constexpr bool LOG_TO_SERIAL = true;
+    constexpr bool LOG_TO_SERIAL = false;
     constexpr uint8_t UDP_TX_PACKET_MAX_SIZE_CUSTOM = 128u;
 
     template <typename Input>
