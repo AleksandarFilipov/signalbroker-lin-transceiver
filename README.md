@@ -25,25 +25,24 @@ If you have installed the applications above, open this folder with VS Code.
 ## Configuration
 
 Configure the main.cpp file before uploading to the ESP32. 
-### RibID
+### RibID - device identifier
 
-There is a line in the main.cpp file that holds the rib_id value for the ESP32. 
-If you have multiple ESP32 that should be connected to the same Beamy Broker, every ESP32 must have a unique rib_id.
+The `rotary switch` is used to specify device identifier within the range 0..15. If you need need an id outside of the range you need to modify the source code.
 
-```cpp 
-constexpr uint8_t rib_id = 1;
-```
+### Master/Slave
+
+`Master/Slave` is automatically set according to the proviced setting in `interfaces.json`
 
 ### DHCP
 
 If you are intended to use DHCP the ethClient connect function should look like this
 ```cpp
-ethClient.connect(&config);
+ethClient.connect(config);
 ```
 
 But if you are intended to use static IP, then the connect function should look like this instead
 ```cpp
-ethClient.connect(&config, false, IPAddress(192, 168, 1, 20), IPAddress(192, 168, 1, 10), IPAddress(255, 255, 255, 0));
+ethClient.connect(config, false, IPAddress(192, 168, 1, 20), IPAddress(192, 168, 1, 10), IPAddress(255, 255, 255, 0));
 ```
 
 So what does this mean? 
@@ -163,3 +162,7 @@ To print logs in beamy broker debug window
 ```
 constexpr bool LOG_TO_SERIAL = false;
 ```
+
+### PCB and 3D printable boxes
+
+Shematics (`gerbers`) along with all inforamtion including casing (`STL`) can be found [here](/doc) 
