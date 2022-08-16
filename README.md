@@ -1,6 +1,10 @@
 # LIN
 
-How to set up the LIN transceiver
+![Components](doc/Pictures/292065030_381798354077153_4080610407932551921_n.jpg)
+
+![Components](doc/Pictures/Box.PNG)
+
+More images here: [link](doc/Pictures/)
 
 ## Installation 
 
