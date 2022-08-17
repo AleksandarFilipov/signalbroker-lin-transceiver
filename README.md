@@ -33,9 +33,15 @@ Configure the main.cpp file before uploading to the ESP32.
 
 The `rotary switch` is used to specify device identifier within the range 0..15. If you need need an id outside of the range you need to modify the source code.
 
+>Alternatively you can hardcode, There is a `define` in the main.cpp file that holds the rib_id value for the ESP32. 
+
+>If you have multiple ESP32 that should be connected to the same Beamy Broker, every ESP32 must have a unique rib_id.
+
 ### Master/Slave
 
 `Master/Slave` is automatically set according to the proviced setting in `interfaces.json`
+
+>On older PCB you need to set a jumper manually.
 
 ### DHCP
 
@@ -170,3 +176,5 @@ constexpr bool LOG_TO_SERIAL = false;
 ### PCB and 3D printable boxes
 
 Shematics (`gerbers`) along with all inforamtion including casing (`STL`) can be found [here](/doc) 
+
+>Intention is that the software supports older revision of the PCB, if that's not the case please let us know.
