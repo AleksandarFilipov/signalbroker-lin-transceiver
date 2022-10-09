@@ -1,5 +1,0 @@
-(fp_lib_table
-  (lib (name KiCad)(type KiCad)(uri "C:/Users/anton/Documents/Tonion AB/Beamy Labs - Lin-bus card/Kicad/Kicad parts library/LIB_50SEV330M12.5X13.5/50SEV330M12.5X13.5/KiCad.pretty")(options "")(descr ""))
-  (lib (name CP-Lib)(type KiCad)(uri "C:/Users/anton/Documents/Tonion AB/Beamy Labs/Lin-bus card/Card/Kicad parts library/CP-Lib.pretty")(options "")(descr ""))
-  (lib (name "Lin-bus card")(type KiCad)(uri "${KIPRJMOD}/Lin-bus card.pretty")(options "")(descr ""))
-)

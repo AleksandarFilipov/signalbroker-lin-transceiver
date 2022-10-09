@@ -165,4 +165,7 @@ constexpr bool LOG_TO_SERIAL = false;
 
 ### PCB and 3D printable boxes
 
-Shematics (`gerbers`) along with all inforamtion including casing (`STL`) can be found [here](/doc) 
+All ordering information of the Lin Transceiver V1.0 box along with a BOM can be found [here](/doc/Ordering%20Information)
+[Box casing](/doc/Ordering%20Information/STL%20V1.0)
+[PCB gerbers, pick and place files and card BOM for JLCBCB.com](/doc/Ordering%20Information/Card%20V1.0)
+

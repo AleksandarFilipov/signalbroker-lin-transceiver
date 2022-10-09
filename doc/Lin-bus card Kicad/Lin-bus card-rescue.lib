@@ -1,0 +1,40 @@
+EESchema-LIBRARY Version 2.4
+#encoding utf-8
+#
+# MCP2004A-E_P-eec-Lin-bus-card-rescue
+#
+DEF MCP2004A-E_P-eec-Lin-bus-card-rescue U 0 40 Y Y 1 L N
+F0 "U" 0 200 50 H V L CNN
+F1 "MCP2004A-E_P-eec-Lin-bus-card-rescue" 0 300 50 H V L CNN
+F2 "Microchip-MCP2004A-E_P-*" 0 400 50 H I L CNN
+F3 "http://ww1.microchip.com/downloads/en/DeviceDoc/22230D.pdf" 0 500 50 H I L CNN
+F4 "MS-001" 0 600 50 H I L CNN "Code  JEDEC"
+F5 "Manufacturer URL" 0 700 50 H I L CNN "Component Link 1 Description"
+F6 "http://www.microchip.com/" 0 800 50 H I L CNN "Component Link 1 URL"
+F7 "Package Specification" 0 900 50 H I L CNN "Component Link 3 Description"
+F8 "http://www.microchip.com/stellent/groups/techpub_sg/documents/packagingspec/en012702.pdf" 0 1000 50 H I L CNN "Component Link 3 URL"
+F9 "revD, Dec-2011" 0 1100 50 H I L CNN "Datasheet Version"
+F10 "8-Lead Plastic Dual In-Line (P) - 300 mil Body [PDIP]" 0 1200 50 H I L CNN "Package Description"
+F11 "revBB, Aug-2009" 0 1300 50 H I L CNN "Package Version"
+F12 "IC" 0 1400 50 H I L CNN "category"
+F13 "1299908" 0 1500 50 H I L CNN "ciiva ids"
+F14 "0b18bde743637b9f" 0 1600 50 H I L CNN "library id"
+F15 "Microchip" 0 1700 50 H I L CNN "manufacturer"
+F16 "PDIP300-P8" 0 1800 50 H I L CNN "package"
+F17 "1331939233" 0 1900 50 H I L CNN "release date"
+F18 "D6FB63FD-EB78-4469-8CAD-4EA15A3A7AE6" 0 2000 50 H I L CNN "vault revision"
+F19 "yes" 0 2100 50 H I L CNN "imported"
+DRAW
+S 100 100 900 -1100 1 1 0 f
+X RXD 1 0 -200 100 R 40 40 1 1 C
+X CS/WAKE 2 0 -400 100 R 40 40 1 1 I
+X ~FAULT~/TXE 3 0 -600 100 R 40 40 1 1 B
+X TXD 4 0 0 100 R 40 40 1 1 I
+X VSS 5 0 -1000 100 R 40 40 1 1 W
+X LBUS 6 1000 -200 100 L 40 40 1 1 B
+X VBB 7 1000 0 100 L 40 40 1 1 W
+X VREN 8 0 -800 100 R 40 40 1 1 O
+ENDDRAW
+ENDDEF
+#
+#End Library
