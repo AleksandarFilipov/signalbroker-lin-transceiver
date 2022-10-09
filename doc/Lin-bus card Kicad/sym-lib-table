@@ -1,0 +1,5 @@
+(sym_lib_table
+  (lib (name eec)(type Legacy)(uri "C:/Users/anton/Documents/Tonion AB/Beamy Labs/Lin-bus card/Card/Kicad parts library/IC_Microchip_MCP2004A-E_P/eec.lib")(options "")(descr ""))
+  (lib (name 50SEV330M12.5X13.5)(type Legacy)(uri "C:/Users/anton/Documents/Tonion AB/Beamy Labs/Lin-bus card/Card/Kicad parts library/LIB_50SEV330M12.5X13.5/50SEV330M12.5X13.5/KiCad/50SEV330M12.5X13.5.lib")(options "")(descr ""))
+  (lib (name Lin-bus-card-rescue)(type Legacy)(uri "${KIPRJMOD}/Lin-bus card-rescue.lib")(options "")(descr ""))
+)
