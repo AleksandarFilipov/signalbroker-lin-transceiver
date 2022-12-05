@@ -26,6 +26,10 @@ public:
 
     void writeHeader(byte id);
 
+    void writeHeaderNoFlush(byte id);
+    
+    void flushEcho();
+
     uint8_t synchHeader();
 
     void sendOverUdp(byte id);
