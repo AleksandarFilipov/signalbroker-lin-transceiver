@@ -1,0 +1,7 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP MCP2004A-E/P
+D MCP2004A-E/P
+F http://ww1.microchip.com/downloads/en/DeviceDoc/22230D.pdf
+$ENDCMP
+# end doc library

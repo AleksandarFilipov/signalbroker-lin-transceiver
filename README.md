@@ -1,6 +1,10 @@
 # LIN
 
-How to set up the LIN transceiver
+![Components](doc/Pictures/292065030_381798354077153_4080610407932551921_n.jpg)
+
+![Components](doc/Pictures/Box.PNG)
+
+More images here: [link](doc/Pictures/)
 
 ## Installation 
 
@@ -25,25 +29,30 @@ If you have installed the applications above, open this folder with VS Code.
 ## Configuration
 
 Configure the main.cpp file before uploading to the ESP32. 
-### RibID
+### RibID - device identifier
 
-There is a line in the main.cpp file that holds the rib_id value for the ESP32. 
-If you have multiple ESP32 that should be connected to the same Beamy Broker, every ESP32 must have a unique rib_id.
+The `rotary switch` is used to specify device identifier within the range 0..15. If you need need an id outside of the range you need to modify the source code.
 
-```cpp 
-constexpr uint8_t rib_id = 1;
-```
+>Alternatively you can hardcode, There is a `define` in the main.cpp file that holds the rib_id value for the ESP32. 
+
+>If you have multiple ESP32 that should be connected to the same Beamy Broker, every ESP32 must have a unique rib_id.
+
+### Master/Slave
+
+`Master/Slave` is automatically set according to the proviced setting in `interfaces.json`
+
+>On older PCB you need to set a jumper manually.
 
 ### DHCP
 
 If you are intended to use DHCP the ethClient connect function should look like this
 ```cpp
-ethClient.connect(&config);
+ethClient.connect(config);
 ```
 
 But if you are intended to use static IP, then the connect function should look like this instead
 ```cpp
-ethClient.connect(&config, false, IPAddress(192, 168, 1, 20), IPAddress(192, 168, 1, 10), IPAddress(255, 255, 255, 0));
+ethClient.connect(config, false, IPAddress(192, 168, 1, 20), IPAddress(192, 168, 1, 10), IPAddress(255, 255, 255, 0));
 ```
 
 So what does this mean? 
@@ -102,7 +111,7 @@ If you are intended to run as a slave, your interface file should look like this
       "config": {
         "device_identifier": 1,
         "server_port": 2014,
-        "target_host": 192.168.0.20,
+        "target_host": "192.168.0.20",
         "target_port": 2013
       },
       "node_mode": "slave",
@@ -163,3 +172,13 @@ To print logs in beamy broker debug window
 ```
 constexpr bool LOG_TO_SERIAL = false;
 ```
+
+### PCB and 3D printable boxes
+
+All ordering information of the RemotiveLIN V1.1 box along with a BOM can be found [here](/doc/Ordering%20Information)
+
+The Box casing can be 3D printed from the [STL files](/doc/Ordering%20Information/STL%20Casing)
+
+The PCB can be manufactured and most parts can be assempled on the PCB by www.jlcpcb.com by uploading the [gerber, BOM and pick and place files](/doc/Ordering%20Information/PCB%20V1.1%20JLCPCB%20Ordering). The parts that are not in stock at JLCPCB needs to be ordered from a seperate supplier and then handsoldered to the PCB. These part can be found in the [BOM Excel file](/doc/Ordering%20Information/Full%20BOM%20V1.1.xlsx).
+
+>Intention is that the software supports older revision of the PCB, if that's not the case please let us know.

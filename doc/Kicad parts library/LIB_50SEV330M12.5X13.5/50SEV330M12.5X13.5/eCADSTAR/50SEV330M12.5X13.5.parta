@@ -1,0 +1,68 @@
+(Japanese_coding: sjis)
+(function "ECS_15574546"
+    (uver 1)
+    (cuser "SamacSys")
+    (uuser "SamacSys")
+    (ctime 2021-12-14-15:43:36)
+    (utime 2021-12-14-15:43:36)
+    (interface
+        (port "1" (symbPinId 1) (portType INOUT))
+        (port "2" (symbPinId 2) (portType INOUT))
+    )
+    (property "symbolName" "50SEV330M12_5X13_5")
+)
+
+
+(pinAssign "ECS_15574546"
+    (uver 1)
+    (cuser "SamacSys")
+    (uuser "SamacSys")
+    (ctime 2021-12-14-15:43:36)
+    (utime 2021-12-14-15:43:36)
+    (interface
+        (port "1" (symbPinId 1) (portName "+") (portType INOUT))
+        (port "2" (symbPinId 2) (portName "-") (portType INOUT))
+    )
+    (internal
+        (funcInst (functionRef "ECS_15574546")
+                (port "1" (match "1"))
+                (port "2" (match "2"))
+        )
+    )
+    (property "usePowerBox" "No")
+    (property "symbolName" "50SEV330M12_5X13_5")
+)
+
+
+(part "50SEV330M12_5X13_5"
+    (uver 1)
+    (cuser "SamacSys")
+    (uuser "SamacSys")
+    (ctime 2021-12-14-15:43:36)
+    (utime 2021-12-14-15:43:36)
+    (packageRef "50SEV330M12_5X13_5")
+    (pinAssignRef "ECS_15574546")
+    (interface
+        (port "1" (symbPinId 1) (portName "+") (portType INOUT))
+        (port "2" (symbPinId 2) (portName "-") (portType INOUT))
+    )
+    (partClass UNDEF)
+    (useInSchema Y)
+    (useInLayout Y)
+    (inPartsList Y)
+    (partType NORMAL)
+    (placeRestriction FREE)
+    (property "enetNonSeries" "NO")
+    (property "refDesPrefix" "C")
+    (property "description" "CAP ALUM 330UF 20% 50V SMD")
+    (property "Manufacturer_Name" "Rubycon")
+    (property "Manufacturer_Part_Number" "50SEV330M12.5X13.5")
+    (property "Mouser_Part_Number" "")
+    (property "Mouser_Price/Stock" "")
+    (property "Arrow_Part_Number" "")
+    (property "Arrow_Price/Stock" "")
+    (property "Datasheet_Link" "https://www.rubycon.co.jp/wp-content/uploads/catalog-aluminum/SEV.pdf")
+    (property "compAreaTopHeight" 14)
+)
+
+

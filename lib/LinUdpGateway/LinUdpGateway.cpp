@@ -54,6 +54,34 @@ void LinUdpGateway::writeHeader(uint8_t id) {
 }
 
 /**
+ * @brief Write LIN frame-header (includes break, synch & id) does NOT flush echo
+ * @param id - Frame id on LIN-bus
+ * */
+void LinUdpGateway::writeHeaderNoFlush(uint8_t id) {
+    std::array<uint8_t, 2> echo{};
+    m_lin.serialBreak();  // Generate the low signal that exceeds 1 char.
+    m_lin.serial().write(SYN_FIELD);                 // Sync byte
+    m_lin.serial().write(Lin::addrParity(id) | id);  // ID byte
+
+    // lin transceiver will echo back, just consume the data.
+    // m_lin.serial().readBytes(echo.data(), echo.size());
+}
+
+/**
+ * @brief Flush echo as a consequence of writeHeaderNoFlush
+ * */
+void LinUdpGateway::flushEcho() {
+    std::array<uint8_t, 2> echo{};
+    // m_lin.serialBreak();  // Generate the low signal that exceeds 1 char.
+    // m_lin.serial().write(SYN_FIELD);                 // Sync byte
+    // m_lin.serial().write(Lin::addrParity(id) | id);  // ID byte
+
+    // lin transceiver will echo back, just consume the data.
+    m_lin.serial().readBytes(echo.data(), echo.size());
+}
+
+
+/**
  *  @brief Find start position look for BREAK followed BY SYN_FIELD
  *          we expect this to be the header if it's not read bytes until
  * conditions are met. we now should have BREAK, SYN_FIELD followed by ID.
@@ -102,6 +130,8 @@ uint8_t LinUdpGateway::synchHeader() {
 
         match = (frameBreak == BREAK) && (frameSynch == SYN_FIELD);
     }
+    digitalWrite(m_config->trafficPin(), HIGH); //turning yellow LED on
+    // will be deactivated in mail loop
 
     m_config->incrementSynchedPackages();
 
@@ -349,6 +379,9 @@ void LinUdpGateway::runMaster() {
     // Check if payload is valid
     // It's valid when the packet buffer length is equal to 5 (arbitration
     // frame) or 5 + LIN frame size (master frame)
+    digitalWrite(m_config->trafficPin(), HIGH); //turning yellow LED on
+    // will be deactivated in main loop
+
     bool validPayload =
         ((m_packetBufferLength == minPacketBufferLength) ||
          (m_packetBufferLength == (minPacketBufferLength + record->size())));
@@ -371,10 +404,11 @@ void LinUdpGateway::runMaster() {
         }
     } else {
         // this a master frame. Send it all..
-        writeHeader(id);
+        writeHeaderNoFlush(id);
         memcpy(&record->writeCache(),
                &_packetBuffer.at(PACKET_BUFFER_PAYLOAD_POS), record->size());
         sendOverSerial(record);
+        flushEcho();
     }
 }
 

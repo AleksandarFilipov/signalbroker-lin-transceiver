@@ -1,0 +1,9 @@
+Manufacturer=Rubycon
+PartNumber=50SEV330M12.5X13.5
+PartCategory=Capacitor Polarised
+PackageCategory=Capacitor Al Electrolytic
+PinCount=2
+Version=1.1
+Released=2021-12-14 15:43:36
+Downloaded=2022-04-19 11:06:32
+3D=Y
