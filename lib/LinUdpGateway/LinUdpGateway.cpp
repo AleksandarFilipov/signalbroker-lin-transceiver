@@ -43,21 +43,22 @@ void LinUdpGateway::init() {
  * @brief Write LIN frame-header (includes break, synch & id)
  * @param id - Frame id on LIN-bus
  * */
-void LinUdpGateway::writeHeader(uint8_t id) {
-    std::array<uint8_t, 2> echo{};
+int LinUdpGateway::writeHeader(uint8_t id) {
+    // std::array<uint8_t, 2> echo{};
     m_lin.serialBreak();  // Generate the low signal that exceeds 1 char.
     m_lin.serial().write(SYN_FIELD);                 // Sync byte
     m_lin.serial().write(Lin::addrParity(id) | id);  // ID byte
 
     // lin transceiver will echo back, just consume the data.
-    m_lin.serial().readBytes(echo.data(), echo.size());
+    // m_lin.serial().readBytes(echo.data(), echo.size());
+    return flushHeaderEcho();
 }
 
 /**
  * @brief Write LIN frame-header (includes break, synch & id) does NOT flush echo
  * @param id - Frame id on LIN-bus
  * */
-void LinUdpGateway::writeHeaderNoFlush(uint8_t id) {
+int LinUdpGateway::writeHeaderNoFlush(uint8_t id) {
     std::array<uint8_t, 2> echo{};
     m_lin.serialBreak();  // Generate the low signal that exceeds 1 char.
     m_lin.serial().write(SYN_FIELD);                 // Sync byte
@@ -65,21 +66,39 @@ void LinUdpGateway::writeHeaderNoFlush(uint8_t id) {
 
     // lin transceiver will echo back, just consume the data.
     // m_lin.serial().readBytes(echo.data(), echo.size());
+    return echo.size();
 }
 
 /**
  * @brief Flush echo as a consequence of writeHeaderNoFlush
+ * @param bytes The number of bytes to read from the echo buffer.
+ * @return The difference between the requested number of bytes (`bytes`) and the 
+ *         actual number of bytes read. 
+ *         - A return value of `0` indicates that all bytes were successfully read.
+ *         - A positive return value indicates that fewer bytes were read than requested.
+ *         - A negative value is not expected under normal circumstances.
+ */
+int LinUdpGateway::flushHeaderEcho() {
+    return flushBytes(2);
+}
+
+void LinUdpGateway::flush() {
+    return m_lin.serial().flush();
+}
+
+/**
+ * @brief Flush echo
  * */
-void LinUdpGateway::flushEcho() {
-    std::array<uint8_t, 2> echo{};
+int LinUdpGateway::flushBytes(int bytes) {
+    std::vector<uint8_t> echo(bytes);
     // m_lin.serialBreak();  // Generate the low signal that exceeds 1 char.
     // m_lin.serial().write(SYN_FIELD);                 // Sync byte
     // m_lin.serial().write(Lin::addrParity(id) | id);  // ID byte
 
     // lin transceiver will echo back, just consume the data.
-    m_lin.serial().readBytes(echo.data(), echo.size());
+    int readbytes = m_lin.serial().readBytes(echo.data(), echo.size());
+    return (echo.size() - readbytes);
 }
-
 
 /**
  *  @brief Find start position look for BREAK followed BY SYN_FIELD
@@ -147,7 +166,7 @@ uint8_t LinUdpGateway::synchHeader() {
  * @param id - Frame id on LIN-bus
  *
  * */
-void LinUdpGateway::readLinAndSendOnUdp(uint8_t id) {
+void LinUdpGateway::readLinAndSendOnUdp(uint8_t id, int non_flushed_bytes) {
     // read buffer  0  1  2        3        4       10
     //              id payload1 payload2...         crc
     // count        0        1        2
@@ -155,6 +174,13 @@ void LinUdpGateway::readLinAndSendOnUdp(uint8_t id) {
 
     m_lin.serial().setTimeout(TRAFFIC_TIMEOUT);
     readBuffer.at(0) = static_cast<uint8_t>((Lin::addrParity(id) | id));
+
+    if (non_flushed_bytes != 0) {
+        int failed_flushed_bytes = flushBytes(non_flushed_bytes);
+        std::array<char, 100> message{};
+        sprintf(message.data(), "re-flushing data - possibly due to sleep. Bytes requested: %d flushed: %d -> %s", non_flushed_bytes, non_flushed_bytes - failed_flushed_bytes, failed_flushed_bytes == 0 ? "succeeded" : "failed");
+        m_config->log(message.data());
+    }
 
     Record *record = m_records->getRecordById(id);
     if (record == nullptr) {
@@ -167,7 +193,7 @@ void LinUdpGateway::readLinAndSendOnUdp(uint8_t id) {
     // Reading payload and crc
     int bytesReceived =
         m_lin.serial().readBytes(&readBuffer.at(1), bytesExpected);
-
+    
     // If these values doesn't match, return.
     if (bytesReceived != bytesExpected) {
         // Serial.printf("Received %d bytes mismatch with expected %d\n",
@@ -286,7 +312,7 @@ void LinUdpGateway::sendOverSerial(Record *record) {
 
     // this code fixes consequent synch issues.
     m_lin.serial().write(&sendBuffer.at(1), record->size() + 1);
-    m_lin.serial().flush();
+    flush();
     m_config->incrementTxOverLin();
 }
 
@@ -398,9 +424,9 @@ void LinUdpGateway::runMaster() {
         if (!record->master()) {
             // this is an arbitration frame
             // Send arbitration message (only the header)
-            writeHeader(id);
+            int non_flushed_bytes = writeHeader(id);
             // wait until the slave respond and consume the result
-            readLinAndSendOnUdp(id);
+            readLinAndSendOnUdp(id, non_flushed_bytes);
         }
     } else {
         // this a master frame. Send it all..
@@ -408,7 +434,7 @@ void LinUdpGateway::runMaster() {
         memcpy(&record->writeCache(),
                &_packetBuffer.at(PACKET_BUFFER_PAYLOAD_POS), record->size());
         sendOverSerial(record);
-        flushEcho();
+        flushHeaderEcho();
     }
 }
 
@@ -455,7 +481,7 @@ void LinUdpGateway::runSlave() {
             if (record->master() || (!record->cacheValid()) || !is_request_intened_for_this_slave(id))
             {
                 sendOverUdp(id);
-                readLinAndSendOnUdp(id);
+                readLinAndSendOnUdp(id, 0);
             }
             else
             {

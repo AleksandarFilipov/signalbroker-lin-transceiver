@@ -22,13 +22,17 @@ public:
     void init();
 
 public:
-    void readLinAndSendOnUdp(byte id);
+    void readLinAndSendOnUdp(byte id, int non_flushed_bytes);
 
-    void writeHeader(byte id);
+    int writeHeader(byte id);
 
-    void writeHeaderNoFlush(byte id);
+    int writeHeaderNoFlush(byte id);
     
-    void flushEcho();
+    int flushHeaderEcho();
+
+    int flushBytes(int bytes);
+
+    void flush();
 
     uint8_t synchHeader();
 

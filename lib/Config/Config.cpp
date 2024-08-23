@@ -45,6 +45,7 @@ void Config::init()
             sprintf(message.data(), "From: %s: %d, To: %s: %d, Length: %d",
                     remoteIp, packet.remotePort(),
                     localIp.toString().c_str(), packet.localPort(), packet.length());
+            // log(message.data());
 
             m_packetBufferLength = packet.length() > m_packetBuffer.size() ? m_packetBuffer.size() : packet.length();
             memcpy(m_packetBuffer.data(), packet.data(), m_packetBufferLength);
