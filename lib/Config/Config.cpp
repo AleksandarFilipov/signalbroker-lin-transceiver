@@ -15,6 +15,7 @@ Config::Config(uint8_t ribID, Records &records, uint8_t masterPin, uint8_t traff
       m_ribID(ribID),
       m_hostPort{},
       m_hostPortHash{},
+    //   m_udpServerConfigPort{4001},
       m_clientPort{},
       m_clientPortHash{},
       m_messageSizesHash{},
@@ -29,7 +30,7 @@ Config::Config(uint8_t ribID, Records &records, uint8_t masterPin, uint8_t traff
 void Config::init()
 {
     // Just start to listen to port
-    if (udpClientSender.listen(udpServerConfigPort))
+    if (udpClientSender.listen(m_udpServerConfigPort))
     {
     }
 
@@ -153,7 +154,7 @@ void Config::sendHeartbeat()
         heartbeat.write(local.u8.high);
         heartbeat.write(local.u8.low);
 
-        udpClientSender.broadcast(heartbeat);
+        udpClientSender.broadcastTo(heartbeat, m_udpServerConfigPort);
 
         clearCounters();
     }
@@ -222,7 +223,8 @@ void Config::requestConfigItem(uint8_t item)
     message.write(item);
     message.write((uint8_t)0x00);
     message.write((uint8_t)0x00);
-    udpClientSender.broadcast(message);
+    // possibly this has changed, make sure to broadcast on new port
+    udpClientSender.broadcastTo(message, m_udpServerConfigPort);
 }
 
 /**
@@ -277,6 +279,17 @@ void Config::parseServerMessage()
 
     switch (m_packetBuffer.at(value(Offsets::IDENTIFIER_OFFSET)))
     {
+    case HOST_PORT_CONFIG:
+        if (2 != message_size)
+        {
+            return;
+        }
+        // Server assigned new port for broker communication, make sure to re-fetch all configuration, and use this port until other has been communicated.    
+        m_udpServerConfigPort = (m_packetBuffer.at(value(Offsets::PAYLOAD_START_OFFSET)) << 8u) +
+                    m_packetBuffer.at(value(Offsets::PAYLOAD_START_OFFSET) + 1);
+
+        // This always arrive with a new hash.
+        break;
     case HOST_PORT:
         if (2 != message_size)
         {
@@ -380,7 +393,7 @@ void Config::logToServer(const char *message)
     udpMessage.write((byte)0x00);
     udpMessage.write((byte)strlen(message));
     udpMessage.println(message);
-    udpClientSender.broadcast(udpMessage);
+    udpClientSender.broadcastTo(udpMessage, m_udpServerConfigPort);
 }
 
 /**

@@ -372,8 +372,8 @@ void LinUdpGateway::run() {
             break;
         default:
             m_config->log(
-                "You haven't specified node, please select node in the signal "
-                "broker and restart.");
+                "You haven't specified node mode master/slave, please select node in the signal "
+                "broker configuration and restart.");
             delay(500);
             break;
     }
