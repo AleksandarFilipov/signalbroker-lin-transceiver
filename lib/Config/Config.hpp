@@ -23,12 +23,12 @@ public:
     explicit Config(uint8_t ribID, Records &records, uint8_t masterPin, uint8_t trafficPin);
 
     /**
-    * "MASTER means that you need to reply to all ids, all except the master ids. For master id the data should be sent back.
-    * 
-    * "SLAVE" means that we send arbitration frames and master frames. Other responses should be sent back.
-    * 
-    * "UNDEFINED" means that you haven't chosen any mode yet
-    */
+     * "MASTER means that you need to reply to all ids, all except the master ids. For master id the data should be sent back.
+     *
+     * "SLAVE" means that we send arbitration frames and master frames. Other responses should be sent back.
+     *
+     * "UNDEFINED" means that you haven't chosen any mode yet
+     */
     enum class NodeModes : uint8_t
     {
         SLAVE = 0,
@@ -115,7 +115,7 @@ private:
     void clearCounters();
 
 private:
-    static constexpr auto udpServerConfigPort = 4001;
+    uint16_t m_udpServerConfigPort = 4001;
     static constexpr auto udpTargetConfigPort = 4000;
     static constexpr int heartbeatPeriod_ = 2500;
     static constexpr uint8_t HEADER = 0x04;
@@ -125,9 +125,11 @@ private:
     static constexpr uint8_t NODE_MODE = (1u << 3u);     // 8
     static constexpr uint8_t HEART_BEAT = (1u << 4u);    // 16
     static constexpr uint8_t NAD = (1u << 5u);           // 32
-    static constexpr uint8_t LOGGER = 0x60;              // 96
+    // this feature can not be requested from server, since the server expects data on a different port. Instead this is pushed from the server and renders current config obsolete
+    static constexpr uint8_t HOST_PORT_CONFIG = (1u << 6u); // 64
+    static constexpr uint8_t LOGGER = 0x60;                 // 96
 
-    uint8_t m_nad = 0;          // This is intended for filtering diagnostic request. To selectively only answer with on lin client.
+    uint8_t m_nad = 0; // This is intended for filtering diagnostic request. To selectively only answer with on lin client.
     uint8_t m_masterPin;
     uint8_t m_trafficPin;
     DoubleByte m_nadHash;
