@@ -186,4 +186,7 @@ The PCB can be manufactured and most parts can be assempled on the PCB by www.jl
 - 3 GND
 - 7 Signal
 
+#### Nice to know
+The device does implement ping, which is helpful for debugging
+
 >Intention is that the software supports older revision of the PCB, if that's not the case please let us know.
